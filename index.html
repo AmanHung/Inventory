@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 - 手機版面修正</title>
+    <title>豐原醫院藥劑科盤點系統</title>
     
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -12,71 +12,193 @@
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", "Segoe UI", Roboto, sans-serif; background-color: #f3f4f6; }
         
-        /* --- CSS 優化重點 --- */
-        
-        /* 輸入框樣式：設定 min-width 防止被壓縮到不見 */
         .input-box { 
             @apply w-full h-10 border border-gray-400 rounded mx-1 text-center text-lg font-bold outline-none transition-colors p-0; 
-            min-width: 40px; /* 關鍵：保證最小寬度 */
+            min-width: 40px; 
             -moz-appearance: textfield;
         }
-        .input-box:focus { @apply ring-2 ring-blue-500 border-blue-500; }
-        .input-box::-webkit-outer-spin-button,
-        .input-box::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-
-        /* 輸入框顏色狀態 */
+        .input-box:focus { @apply ring-2 ring-blue-500 border-blue-500 bg-blue-50; }
+        .input-box::-webkit-outer-spin-button, .input-box::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         .input-empty { @apply bg-white text-red-500 placeholder-red-300; }
         .input-filled { @apply bg-blue-50 text-black border-blue-300; }
         
-        /* 加減按鈕：固定寬度，防止被擠壓 */
-        .btn-unit { 
-            @apply flex-shrink-0 w-10 h-10 flex items-center justify-center bg-gray-200 rounded font-bold text-xl text-gray-600 active:scale-95 select-none cursor-pointer hover:bg-gray-300 shadow-sm border border-gray-300; 
-        }
-        
-        /* 無庫存按鈕 */
-        .btn-zero { 
-            @apply mt-auto w-full text-xs bg-gray-600 text-white py-2 rounded shadow hover:bg-gray-700 active:bg-gray-800 active:scale-95 transition font-bold tracking-wide flex items-center justify-center gap-1; 
-        }
-
-        /* 隱藏捲軸但保留功能 (優化視覺) */
+        .btn-unit { @apply flex-shrink-0 w-10 h-10 flex items-center justify-center bg-gray-200 rounded font-bold text-xl text-gray-600 active:scale-95 select-none cursor-pointer hover:bg-gray-300 shadow-sm border border-gray-300; }
+        .btn-zero { @apply mt-auto w-full text-xs bg-gray-600 text-white py-2 rounded shadow hover:bg-gray-700 active:bg-gray-800 active:scale-95 transition font-bold tracking-wide flex items-center justify-center gap-1; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
     </style>
 </head>
 <body>
 
-<div id="app" class="w-full max-w-md mx-auto min-h-screen bg-white shadow-xl flex flex-col border-x border-gray-200">
-    <div v-if="currentPage === 'login'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50">
-        <div class="w-full max-w-sm">
-            <h1 class="text-3xl font-bold text-blue-800 text-center mb-2">藥局盤點系統</h1>
-            <p class="text-center text-gray-500 mb-8">Zone A (手機版面修正)</p>
-            
-            <label class="block text-gray-700 text-sm font-bold mb-2">請選擇盤點人員</label>
-            <select v-model="currentUser" class="w-full p-3 border rounded-lg bg-white shadow-sm text-lg mb-6 cursor-pointer hover:border-blue-500">
-                <option disabled value="">-- 請選擇 --</option>
-                <option v-for="name in staffList" :value="name">{{ name }}</option>
-            </select>
+<div id="app" class="w-full max-w-md mx-auto min-h-screen bg-white shadow-xl flex flex-col border-x border-gray-200 relative">
 
-            <button @click="enterSystem" 
-                :disabled="!currentUser"
-                :class="{'opacity-50 cursor-not-allowed': !currentUser}"
-                class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow hover:bg-blue-700 transition text-lg">
-                開始盤點
+    <div v-if="currentPage === 'admin'" class="flex-1 flex flex-col p-6 bg-gray-50 overflow-y-auto">
+        <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+            <span class="text-blue-600">⚙️</span> 資料維護
+        </h2>
+
+        <div class="bg-white p-4 rounded-lg shadow mb-6 border-l-4 border-indigo-500">
+            <h3 class="font-bold text-lg mb-2 text-indigo-900">1. 人員名單管理</h3>
+            <p class="text-xs text-gray-500 mb-3">匯入 CSV 檔 (逗號或換行分隔)。</p>
+            
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-bold text-gray-700">目前人員: {{ staffList.length }} 位</span>
+                <button v-if="staffList.length > 0" @click="clearStaff" class="text-xs text-red-500 underline">清空</button>
+            </div>
+            <input type="file" ref="staffInput" accept=".csv,.txt" @change="handleStaffUpload" class="hidden">
+            <button @click="$refs.staffInput.click()" class="w-full bg-indigo-100 text-indigo-700 font-bold py-2 rounded border border-indigo-200 hover:bg-indigo-200 transition">
+                👤 匯入人員
             </button>
+        </div>
+
+        <div class="bg-white p-4 rounded-lg shadow mb-6 border-l-4 border-blue-500">
+            <h3 class="font-bold text-lg mb-2 text-blue-900">2. 藥品盤點表管理</h3>
+            <p class="text-xs text-gray-500 mb-3">支援多檔選取，自動分區。</p>
+            
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-bold text-gray-700">目前藥品: {{ inventory.length }} 筆</span>
+                <button v-if="inventory.length > 0" @click="clearInventory" class="text-xs text-red-500 underline">清空</button>
+            </div>
+            <input type="file" ref="fileInput" multiple accept=".csv,.xlsx,.xls" @change="handleFileUpload" class="hidden">
+            <button @click="$refs.fileInput.click()" class="w-full bg-blue-100 text-blue-700 font-bold py-3 rounded-lg border border-blue-300 hover:bg-blue-200 transition mb-2">
+                📂 匯入盤點表
+            </button>
+            
+            <div v-if="isProcessing" class="flex items-center justify-center gap-3 py-4 text-gray-600">
+                <div class="loader"></div> 處理中...
+            </div>
+
+            <div v-if="importSummary.totalFiles > 0" class="mt-4 p-3 bg-green-50 border border-green-200 rounded text-sm text-green-800">
+                <p>✅ 讀取檔案: <strong>{{ importSummary.totalFiles }}</strong> 個</p>
+                <p>💊 藥品總數: <strong>{{ importSummary.totalItems }}</strong> 筆</p>
+                <button @click="confirmImport" class="mt-3 w-full bg-green-600 text-white font-bold py-2 rounded hover:bg-green-700 shadow">
+                    確認更新資料庫
+                </button>
+            </div>
+        </div>
+        <button @click="currentPage = 'login'" class="mt-auto w-full bg-gray-600 text-white font-bold py-3 rounded-lg shadow hover:bg-gray-700">返回首頁</button>
+    </div>
+
+    <div v-else-if="currentPage === 'report'" class="flex-1 flex flex-col p-6 bg-gray-50 overflow-y-auto">
+        <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+            <span class="text-green-600">📊</span> 報表中心
+        </h2>
+
+        <div class="bg-white p-4 rounded-lg shadow mb-6 border-l-4 border-blue-600">
+            <h3 class="font-bold text-lg mb-3 flex justify-between items-center">
+                各區進度與匯出
+                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">共 {{ uniqueZones.length }} 區</span>
+            </h3>
+            
+            <div class="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scroll">
+                <div v-for="z in zoneProgress" :key="z.name" class="w-full bg-gray-50 p-3 rounded border border-gray-100">
+                    <div class="flex justify-between items-center mb-2">
+                        <div class="flex flex-col">
+                            <span class="font-bold text-gray-800 text-sm">{{ z.name }}</span>
+                            <span class="text-xs font-mono" :class="{'text-green-600 font-bold': z.percent === 100, 'text-gray-500': z.percent < 100}">
+                                {{ z.done }}/{{ z.total }} ({{ z.percent }}%)
+                            </span>
+                        </div>
+                        <button @click="exportZone(z.name)" 
+                            class="text-xs font-bold px-3 py-1.5 rounded transition-colors shadow-sm border flex items-center gap-1"
+                            :class="z.percent === 100 ? 'bg-green-100 text-green-800 border-green-300 hover:bg-green-200' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'">
+                            <span v-if="z.percent === 100">✅</span><span v-else>📥</span> 匯出
+                        </button>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div class="h-2 rounded-full transition-all duration-500"
+                             :class="{ 'bg-red-500': z.percent < 50, 'bg-yellow-400': z.percent >= 50 && z.percent < 100, 'bg-green-500': z.percent === 100 }"
+                             :style="{ width: z.percent + '%' }"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white p-4 rounded-lg shadow mb-6 border-l-4 border-purple-500">
+            <h3 class="font-bold text-lg mb-2">庫存總表 (樞紐分析)</h3>
+            <p class="text-xs text-gray-500 mb-3">藥名 x 區域 交叉分析。</p>
+            <button @click="exportMasterPivotReport" class="w-full bg-purple-600 text-white font-bold py-2 rounded hover:bg-purple-700 shadow">
+                匯出全院總表
+            </button>
+        </div>
+        <button @click="currentPage = 'login'" class="mt-auto w-full bg-gray-600 text-white font-bold py-3 rounded-lg shadow hover:bg-gray-700">返回首頁</button>
+    </div>
+
+    <div v-else-if="currentPage === 'login'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50">
+        <div class="w-full max-w-sm">
+            <h1 class="text-3xl font-bold text-blue-800 text-center mb-1">藥局盤點系統</h1>
+            <p class="text-center text-gray-400 text-sm mb-8">v3.5 (密碼保護版)</p>
+            
+            <div v-if="inventory.length === 0" class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4 rounded shadow-sm">
+                <p class="font-bold">⚠️ 尚無藥品資料</p>
+                <p class="text-sm">請先至「資料維護」匯入盤點表。</p>
+            </div>
+            
+            <div v-if="staffList.length === 0" class="bg-indigo-100 border-l-4 border-indigo-500 text-indigo-700 p-4 mb-6 rounded shadow-sm">
+                <p class="font-bold">⚠️ 尚無人員名單</p>
+                <p class="text-sm">請先至「資料維護」匯入人員 CSV。</p>
+            </div>
+
+            <div v-else>
+                <label class="block text-gray-700 text-sm font-bold mb-2">1. 盤點人員</label>
+                <select v-model="currentUser" class="w-full p-3 border rounded-lg bg-white shadow-sm text-lg mb-4 cursor-pointer hover:border-blue-500">
+                    <option disabled value="">-- 請選擇 --</option>
+                    <option v-for="name in staffList" :value="name">{{ name }}</option>
+                </select>
+
+                <label class="block text-gray-700 text-sm font-bold mb-2">2. 盤點區域</label>
+                <select v-model="currentZone" class="w-full p-3 border rounded-lg bg-white shadow-sm text-lg mb-6 cursor-pointer hover:border-blue-500">
+                    <option disabled value="">-- 請選擇 --</option>
+                    <option v-for="zone in uniqueZones" :value="zone">{{ zone }}</option>
+                </select>
+
+                <button @click="enterSystem" 
+                    :disabled="!currentUser || !currentZone"
+                    :class="{'opacity-50 cursor-not-allowed': !currentUser || !currentZone}"
+                    class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow hover:bg-blue-700 transition text-lg mb-6">
+                    開始盤點
+                </button>
+
+                <hr class="border-gray-300 mb-6">
+                <div class="grid grid-cols-2 gap-4">
+                    <button @click="currentPage = 'report'" class="bg-white border border-gray-300 text-gray-700 font-bold py-2 rounded shadow hover:bg-gray-50 flex flex-col items-center">
+                        <span class="text-2xl mb-1">📊</span> 報表中心
+                    </button>
+                    <button @click="enterAdmin" class="bg-white border border-gray-300 text-gray-700 font-bold py-2 rounded shadow hover:bg-gray-50 flex flex-col items-center">
+                        <span class="text-2xl mb-1">⚙️</span> 資料維護
+                    </button>
+                </div>
+            </div>
+            
+            <button v-if="inventory.length === 0 || staffList.length === 0" @click="enterAdmin" class="mt-4 text-blue-600 underline font-bold">前往匯入資料 ></button>
         </div>
     </div>
 
     <div v-else class="flex-1 flex flex-col h-screen overflow-hidden">
         <div class="bg-blue-700 p-3 text-white shadow-md z-20 shrink-0">
-            <div class="flex justify-between items-center mb-3">
-                <div class="font-bold text-lg truncate flex-1 pr-2">{{ currentUser }}</div>
-                
-                <button @click="checkAndExport" 
-                    class="text-xs font-bold px-3 py-2 rounded shadow transition-colors flex items-center whitespace-nowrap flex-shrink-0 border border-white/20"
-                    :class="uncountedCount > 0 ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-500 hover:bg-green-600'">
-                    <span v-if="uncountedCount > 0">⚠️ 支援匯出 ({{ uncountedCount }})</span>
-                    <span v-else>✅ 匯出報表</span>
+            <div class="flex justify-between items-center mb-2">
+                <div class="flex flex-col overflow-hidden">
+                    <span class="font-bold text-lg truncate">{{ currentUser }}</span>
+                    <span class="text-xs text-blue-200 truncate">區域: {{ currentZone }}</span>
+                </div>
+                <button @click="exitCounting" class="text-xs font-bold px-3 py-2 rounded bg-blue-800 border border-blue-500 hover:bg-blue-600 transition shadow flex items-center gap-1">
+                    💾 儲存離開
                 </button>
+            </div>
+            
+            <div class="flex justify-between items-end text-xs text-blue-100 mb-1 px-1">
+                <span class="font-bold">盤點進度</span>
+                <span class="font-mono">
+                    {{ currentZoneStats.done }}/{{ currentZoneStats.total }} 
+                    ({{ currentZoneStats.percent }}%)
+                </span>
             </div>
             
             <div class="w-full bg-blue-900 rounded-full h-2.5 mb-3 overflow-hidden border border-blue-600">
@@ -84,85 +206,70 @@
             </div>
 
             <div class="relative">
-                <input v-model="searchQuery" type="text" placeholder="🔍 搜尋藥名或代碼..." 
-                       class="w-full px-3 py-2 rounded text-gray-800 outline-none shadow-inner focus:ring-2 focus:ring-blue-400">
+                <input v-model="searchQuery" type="text" placeholder="🔍 搜尋藥名、代碼..." class="w-full px-3 py-2 rounded text-gray-800 outline-none shadow-inner focus:ring-2 focus:ring-blue-400">
             </div>
         </div>
 
         <div class="flex-1 overflow-y-auto p-2 bg-gray-100 pb-20 no-scrollbar">
-            <div v-for="item in filteredInventory" :key="item.code" 
+            <div v-for="item in filteredInventory" :key="item.id" 
                  class="rounded-lg shadow mb-3 p-3 border-l-[6px] border transition-all duration-200 bg-white"
-                 :class="isItemComplete(item) 
-                    ? 'border-green-500 border-l-green-600 bg-green-50/30' 
-                    : 'border-red-300 border-l-red-500 bg-red-50/30'">
+                 :class="isItemComplete(item) ? 'border-green-500 border-l-green-600 bg-green-50/30' : 'border-red-300 border-l-red-500 bg-red-50/30'">
                 
                 <div class="flex justify-between items-start mb-3 gap-2">
                     <div class="flex-1 min-w-0"> 
                         <div class="font-bold text-lg text-gray-800 leading-tight break-words">{{ item.name }}</div>
-                        <div class="text-xs text-gray-500 font-mono mt-1 font-bold flex items-center gap-2">
+                        <div class="text-xs text-gray-500 font-mono mt-1 font-bold flex flex-wrap items-center gap-2">
                             {{ item.code }} 
                             <span class="text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded text-[10px]">{{ item.shelf }}</span>
                         </div>
                         <div class="mt-2 flex flex-wrap gap-1">
-                            <span class="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-600 border border-gray-200">
-                                1{{ item.units.large.name }}={{ item.units.large.cap }}
-                            </span>
-                            <span v-if="item.units.small.cap > 1" class="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-600 border border-gray-200">
-                                1{{ item.units.small.name }}={{ item.units.small.cap }}
-                            </span>
+                            <span v-if="item.units.large.cap > 0" class="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-600 border border-gray-200">1{{ item.units.large.name }}={{ item.units.large.cap }}</span>
+                            <span v-if="item.units.small.cap > 1" class="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-600 border border-gray-200">1{{ item.units.small.name }}={{ item.units.small.cap }}</span>
                         </div>
                     </div>
                     
                     <div class="flex-shrink-0 text-right flex flex-col justify-between h-full min-h-[80px]">
                         <div>
-                            <div v-if="isItemComplete(item)" class="text-3xl font-bold text-green-600 leading-none tracking-tight">
-                                {{ calculateTotal(item) }}
-                            </div>
-                            <div v-else class="text-lg font-bold text-red-500 animate-pulse leading-none">
-                                未盤
-                            </div>
+                            <div v-if="isItemComplete(item)" class="text-3xl font-bold text-green-600 leading-none tracking-tight">{{ calculateTotal(item) }}</div>
+                            <div v-else class="text-lg font-bold text-red-500 animate-pulse leading-none">未盤</div>
                             <div class="text-[10px] text-gray-400 mt-1">總顆數</div>
                         </div>
-                        
-                        <button v-if="!isItemComplete(item)" @click="setAllZero(item)" class="btn-zero">
-                            <span class="text-lg">🗑️</span> 無庫存
-                        </button>
+                        <button v-if="!isItemComplete(item)" @click="setAllZero(item)" class="btn-zero"><span class="text-lg">🗑️</span> 無庫存</button>
                     </div>
                 </div>
 
                 <div class="grid grid-cols-3 gap-1 rounded p-2 border bg-opacity-50"
                      :class="isItemComplete(item) ? 'bg-gray-50 border-gray-200' : 'bg-white border-red-100'">
                     
-                    <div class="text-center flex flex-col">
+                    <div class="text-center flex flex-col" v-if="item.units.large.cap > 0">
                         <label class="text-[11px] text-gray-600 block mb-1 font-bold truncate">{{ item.units.large.name }}</label>
                         <div class="flex items-center justify-center w-full gap-0.5">
                             <button class="btn-unit" @click="updateQty(item, 'large', -1)">-</button>
-                            <input type="number" v-model.number="item.inputs.large" 
+                            <input type="number" v-model.number="item.inputs.large" @input="markUpdated(item)"
                                    :class="item.inputs.large === null ? 'input-empty' : 'input-filled'"
                                    class="input-box" placeholder="?">
                             <button class="btn-unit" @click="updateQty(item, 'large', 1)">+</button>
                         </div>
                     </div>
+                    <div v-else class="flex flex-col justify-center items-center opacity-20"><span class="text-xs">-</span></div>
 
                     <div class="text-center flex flex-col" v-if="item.units.small.cap > 1">
                         <label class="text-[11px] text-gray-600 block mb-1 font-bold truncate">{{ item.units.small.name }}</label>
                         <div class="flex items-center justify-center w-full gap-0.5">
                             <button class="btn-unit" @click="updateQty(item, 'small', -1)">-</button>
-                            <input type="number" v-model.number="item.inputs.small" 
+                            <input type="number" v-model.number="item.inputs.small" @input="markUpdated(item)"
                                    :class="item.inputs.small === null ? 'input-empty' : 'input-filled'"
                                    class="input-box" placeholder="?">
                             <button class="btn-unit" @click="updateQty(item, 'small', 1)">+</button>
                         </div>
                     </div>
-                    <div v-else class="flex flex-col justify-end pb-2 opacity-20 text-center">
-                        <span class="text-xs">-</span>
-                    </div>
+                    <div v-else class="flex flex-col justify-center items-center opacity-20"><span class="text-xs">-</span></div>
 
                     <div class="text-center flex flex-col">
                         <label class="text-[11px] text-gray-600 block mb-1 font-bold truncate">顆/支</label>
                         <div class="flex items-center justify-center w-full gap-0.5">
                             <button class="btn-unit" @click="updateQty(item, 'loose', -1)">-</button>
-                            <input type="number" v-model.number="item.inputs.loose" 
+                            <input type="number" v-model.number="item.inputs.loose" @input="markUpdated(item)"
                                    :class="item.inputs.loose === null ? 'input-empty' : 'input-filled'"
                                    class="input-box" placeholder="?">
                             <button class="btn-unit" @click="updateQty(item, 'loose', 1)">+</button>
@@ -173,281 +280,298 @@
             
             <div v-if="filteredInventory.length === 0" class="text-center text-gray-400 mt-10 py-10">
                 <div class="text-4xl mb-2">🔍</div>
-                找不到相關藥品
+                {{ inventory.length === 0 ? '請先匯入資料' : '該區域無此藥品' }}
             </div>
-            
         </div>
     </div>
 </div>
 
 <script>
-const { createApp, ref, computed, onMounted, watch } = Vue;
-
-// 1. 原始資料 (保持不變)
-const RAW_CSV_ZONE_A = `
-代碼,名稱,區,門牌,,(量/大包裝),,,,(量/小包裝),,,零散,零散,總計
-INSI19,Ryzodeg,A台,冰,,x,5,/盒,6,x,1,,,,6
-RI-I99,Humulin R ,A台,冰,,x,10,/束,,x,1,,,,0
-INSI03,Levemir ,A台,冰,,x,5,/盒,,x,1,,,,0
-INSI14,Novomix 30,A台,冰,1,x,5,/盒,,x,1,,,,5
-INSI13,NovoRapid ,A台,冰,1,x,5,/盒,4,x,1,,,,9
-INSI16,Toujeo ,A台,冰,1,x,5,/盒,2,x,1,,,,7
-INSI17,Tresiba,A台,冰,,x,10,/束,1,x,1,,,,1
-AMIO12,Adarone,A台,調A1,1,x,100,/盒,48,x,10,/排,23,,603
-APIO00,Eliquis,A台,調A1,5,x,56,/盒,1,x,14,/排,29,,323
-EDOO01,Lixiana 30,A台,調A1,5,x,28,/盒,0,x,7,/排,5,,145
-EDOO02,LIXIANA 60,A台,調A1,1,x,28,/盒,6,x,7,/排,4,,74
-MEXO02,Meletin ,A台,調A1,,x,500,/盒,2,x,10,/排,26,,46
-NOLO00,Nolvadex,A台,調A1,2,x,30,/盒,25,x,10,/排,8,,318
-RYTO04,Rhynorm,A台,調A1,,x,840,/盒,29,x,14,/排,5,,411
-DROO00,Multaq,A台,調A1,,x,60,/盒,,x,10,/排,15,,15
-SITO05,SitaMet,A台,調A1,,x,1000,/盒,15,x,10,/排,7,,157
-EMPO00,Jardiance 10,A台,調A2,,x,30,/盒,,x,10,/排,24,,24
-DAPO01,Forxiga,A台,調A2,1,x,28,/盒,,x,14,/排,12,,40
-DABO00,Pradaxa 110mg ,A台,調A2,1,x,60,/盒,,x,10,/排,12,,72
-DABO01,Pradaxa 150mg ,A台,調A2,,x,60,/盒,,x,10,/排,5,,5
-MTXO01,Trexan,A台,調A2,,x,100,/盒,11,x,1,,,,11
-WARO08,Uwarin,A台,調A2,,x,100,/盒,42,x,10,/排,7,,427
-RIVO07,Xarelto 15,A台,調A2,1,x,100,/盒,4,x,10,/排,4,,144
-GLIO11,Amepiride ,A台,調A3,4,x,100,/束,4,x,10,/排,31,,471
-GLXO00,Glyxambi,A台,調A3,,x,30,/盒,12,x,10,/排,16,,136
-SITO00,Januvia ,A台,調A3,10,x,28,/盒,1,x,14,/排,0,,294
-EMPO01,Jardiance 25,A台,調A3,2,x,30,/盒,2,x,10,/排,12,,92
-ACAO14,Litacarbose,A台,調A3,,x,1000,/盒,25,x,10,/排,15,,265
-PIOO25,Politone,A台,調A3,,x,30,/盒,4,x,10,/排,7,,47
-REPO09,Repaglinide ,A台,調A3,4,x,150,/束,14,x,15,/排,59,,869
-GLMO01,Amamet,A台,調A4,,x,1000,/盒,5,x,10,/排,8,,58
-CAGO00,Canaglu,A台,調A4,5,x,28,/盒,1,x,14,/排,12,,166
-METO76,Eutomin,A台,調A4,,x,100,/束,10,x,10,/排,33,,133
-METO61,Glucovance,A台,調A4,10,x,30,/盒,1,x,15,/排,72,,387
-METO83,Henformin,A台,調A4,,x,500,/盒,1,x,10,/排,12,,22
-LINO04,Trajenta 5mg,A台,調A4,,x,30,/盒,41,x,10,/排,21,,431
-XIGO00,Xigduo,A台,調A4,1,x,56,/盒,0,x,7,/排,2,,58
-UREO03,Wecoli,A台,調A51,9,x,100,/束,8,x,10,/排,47,,1027
-OXYO00,Oxbu,A台,調A51,0,x,280,/盒,26,x,14,/排,8,,372
-SOLO17,Solin,A台,調A51,2,x,28,/盒,3,x,14,/排,17,,115
-TOLO09,Terodine,A台,調A51,,x,100,/束,,x,10,/排,,,0
-RANO02,Acemet 60mg ,A台,調A52,2,x,100,/束,0,x,10,/排,13,,213
-MELO11,Melicam,A台,調A52,,x,500,/盒,26,x,10,/排,43,,303
-KETO24,Painoff,A台,調A52,,x,100,/盒,10,x,10,/排,14,,114
-ACEO20,Tonlief ,A台,調A52,3,x,100,/束,,x,10,/排,12,,312
-ETOO10,Etor,A台,調A52,,x,70,/盒,12,x,7,/排,9,,93
-MEFO09,Tonifen,A台,調A53,,x,100,/包,,x,10,/排,,,0
-DDAO02,Minirin Melt OD,A台,調A61,9,x,30,/盒,1,x,10,/排,6,,286
-BETO28,BETMIGA 50MG,A台,調A61,5,x,28,/盒,,x,7,/排,5,,145
-ALPO08,Alprazolam0.5mg,A台,調A管4,,x,100,/束,,x,10,/排,,,0
-RIVO02,Clonopam 0.5 ,A台,調A管4,2,x,100,/盒,0,x,10,/排,9,,209
-DIAO29,Diapin 2mg,A台,調A管4,,x,1000,/盒,9,x,10,/排,5,,95
-FLUO66,Flupine,A台,調A管4,,x,500,/盒,,x,250,/束,128,,128
-IMOO02,Imovane,A台,調A管4,,x,14,/盒,,x,14,/排,1,,1
-EURO02,Kinzolam,A台,調A管4,,x,100,/盒,25,x,10,/排,12,,262
-LEXO03,Lotan,A台,調A管4,,x,100,/束,12,x,10,/排,17,,137
-LORO16,Lowen,A台,調A管4,2,x,100,/束,3,x,10,/排,22,,252
-PHEO09,Phenobarbital ,A台,調A管4,,x,100,/束,57,x,10,/排,,,570
-RIVO00,RIVOTRIL 2MG,A台,調A管4,2,x,60,/盒,1,x,15,/排,15,,150
-TRAO17,Tramed,A台,調A管4,1,x,100,/束,3,x,10,/排,13,,143
-ZOLO07,Zolnox,A台,調A管4,1,x,100,/盒,7,x,10,/排,7,,177
-`;
-
-const RAW_STAFF_CSV = `
-人員名單
-洪 一 仁,吳 惠 珠,陳 佳 瑜,凃 博 懷,蔡 定 甫,郭 益 宏,唐 瑋 瞬,嚴 婉 瑄,葉 姿 鷰,黃 忠 廉
-林 俊 杰,林 學 成,張 俊 哲,陳 嘉 絨,張 湘 瑜,李 舒 菁,王 耀 霆,詹 濬 竹,黃 柏 銘,鄧 媛 心
-陳 聖 容,林 建 勳,吳 詩 茵,林 聖 雅,陳 妍 蓁,解 志 欽,陳 凱 微,莊 桇 澺,黃 苾 昀,林 頌 智
-李 瑋 蓁,許 凱 菁,邱 瑞 玲,黃 惠 珠,廖 慧 伶,劉 育 豪,王 貽 鈴,文 小 熏
-`;
-
-function parseCSV(csvText) {
-    const lines = csvText.trim().split('\n');
-    const items = [];
-    let startIdx = 0;
-    for(let i=0; i<lines.length; i++) {
-        if(lines[i].includes("代碼") && lines[i].includes("名稱")) {
-            startIdx = i + 1;
-            break;
-        }
-    }
-
-    for (let i = startIdx; i < lines.length; i++) {
-        const parts = lines[i].split(',');
-        if (parts.length < 5 || !parts[0]) continue;
-
-        const code = parts[0].trim();
-        const name = parts[1].trim();
-        const shelf = parts[3].trim();
-
-        let lgCap = 1, lgUnit = '盒';
-        if (parts[6] && !isNaN(parseInt(parts[6]))) {
-            lgCap = parseInt(parts[6]);
-            lgUnit = parts[7] ? parts[7].replace('/', '').replace('x', '') : '盒';
-        }
-
-        let smCap = 1, smUnit = '排';
-        if (parts[10] && !isNaN(parseInt(parts[10]))) {
-            smCap = parseInt(parts[10]);
-            smUnit = parts[11] ? parts[11].replace('/', '').replace('x', '') : '排';
-        }
-        
-        items.push({
-            code: code,
-            name: name,
-            shelf: shelf,
-            units: {
-                large: { name: lgUnit, cap: lgCap },
-                small: { name: smUnit, cap: smCap },
-                loose: { name: '顆', cap: 1 }
-            },
-            inputs: { large: null, small: null, loose: null }
-        });
-    }
-    return items;
-}
-
-function parseStaff(csvText) {
-    const raw = csvText.replace('人員名單', '').replace(/\r\n/g, ',').replace(/\n/g, ',');
-    return raw.split(',').map(s => s.trim()).filter(s => s.length > 0);
-}
+const { createApp, ref, computed, onMounted } = Vue;
 
 createApp({
     setup() {
         const currentPage = ref('login');
         const currentUser = ref('');
+        const currentZone = ref('');
         const searchQuery = ref('');
         const staffList = ref([]);
         const inventory = ref([]);
+        
+        const isProcessing = ref(false);
+        const importSummary = ref({ totalFiles: 0, totalItems: 0 });
+        const tempImportData = ref([]);
+        const exportTargetZone = ref('');
 
         onMounted(() => {
-            staffList.value = parseStaff(RAW_STAFF_CSV);
-            const data = parseCSV(RAW_CSV_ZONE_A);
-            
-            // 使用 v9 
-            const savedData = localStorage.getItem('pharmacy_inventory_v9'); 
-            if (savedData) {
-                const savedInputs = JSON.parse(savedData);
-                data.forEach(item => {
-                    if(savedInputs[item.code]) {
-                        item.inputs = savedInputs[item.code];
-                    }
-                });
-            }
-            inventory.value = data;
+            const savedStaff = localStorage.getItem('pharmacy_staff_list_v3');
+            if (savedStaff) { try { staffList.value = JSON.parse(savedStaff); } catch(e) {} }
+            const savedData = localStorage.getItem('pharmacy_inventory_v3');
+            if (savedData) { try { inventory.value = JSON.parse(savedData); } catch (e) {} }
+            if (staffList.value.length === 0 && inventory.value.length === 0) currentPage.value = 'admin';
         });
 
-        const enterSystem = () => {
-            if (currentUser.value) {
-                currentPage.value = 'inventory';
+        // --- 管理員密碼 ---
+        const enterAdmin = () => {
+            const password = prompt("請輸入管理員密碼：");
+            if (password === "8888") {
+                currentPage.value = 'admin';
+            } else if (password !== null) {
+                alert("密碼錯誤！");
             }
         };
 
+        // --- 人員 ---
+        const handleStaffUpload = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                let raw = e.target.result.replace(/人員名單/g, '').replace(/\r\n/g, ',').replace(/\n/g, ',');
+                const names = raw.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                if (names.length > 0 && confirm(`匯入 ${names.length} 位人員？`)) {
+                    staffList.value = names;
+                    localStorage.setItem('pharmacy_staff_list_v3', JSON.stringify(names));
+                    alert('人員名單更新成功！');
+                }
+            };
+            reader.readAsText(file);
+        };
+        const clearStaff = () => { if(confirm('確定清空人員？')) { staffList.value=[]; localStorage.removeItem('pharmacy_staff_list_v3'); } };
+
+        // --- 藥品 ---
+        const handleFileUpload = async (event) => {
+            const files = event.target.files;
+            if (!files.length) return;
+            isProcessing.value = true;
+            tempImportData.value = [];
+            importSummary.value = { totalFiles: 0, totalItems: 0 };
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                let zoneName = file.name.replace('.csv','').replace('.xlsx','').replace('.xls','');
+                const match = zoneName.match(/-\s*(.+)/); 
+                if (match && match[1]) zoneName = match[1].trim();
+                try {
+                    const data = await parseSingleFile(file, zoneName);
+                    tempImportData.value = [...tempImportData.value, ...data];
+                    importSummary.value.totalFiles++;
+                } catch(e) {}
+            }
+            importSummary.value.totalItems = tempImportData.value.length;
+            isProcessing.value = false;
+        };
+
+        const parseSingleFile = (file, zoneName) => {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1, defval: '' });
+                    resolve(processRows(rows, zoneName));
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        };
+
+        const processRows = (rows, zoneName) => {
+            if (!rows || rows.length === 0) return [];
+            let headerIdx = -1, colMap = {};
+            for (let i = 0; i < Math.min(rows.length, 20); i++) {
+                const rowStr = rows[i].map(c => String(c).trim());
+                if (rowStr.includes('代碼') && (rowStr.includes('名稱') || rowStr.includes('藥品名稱'))) {
+                    headerIdx = i;
+                    rows[i].forEach((col, idx) => {
+                        const c = String(col).trim();
+                        if (c.includes('代碼')) colMap.code = idx;
+                        else if (c.includes('名稱')) colMap.name = idx;
+                        else if (c.includes('門牌') || c.includes('儲位')) colMap.shelf = idx;
+                        else if (c.includes('大包裝') && c.includes('量')) colMap.lgCap = idx;
+                        else if (c.includes('大包裝') && (c.includes('單位') || c.includes('/'))) colMap.lgUnit = idx;
+                        else if (c.includes('小包裝') && c.includes('量')) colMap.smCap = idx;
+                        else if (c.includes('小包裝') && (c.includes('單位') || c.includes('/'))) colMap.smUnit = idx;
+                    });
+                    break;
+                }
+            }
+            if (headerIdx === -1) return [];
+            const items = [];
+            for (let i = headerIdx + 1; i < rows.length; i++) {
+                const row = rows[i];
+                const code = row[colMap.code];
+                const name = row[colMap.name];
+                if (!code || !name) continue;
+                let lgCap = 0, lgUnit = '盒';
+                if (colMap.lgCap !== undefined) {
+                    const val = parseInt(row[colMap.lgCap]);
+                    if (!isNaN(val)) lgCap = val;
+                    if (row[colMap.lgCap+1] && String(row[colMap.lgCap+1]).includes('/')) lgUnit = String(row[colMap.lgCap+1]).replace('/','').replace('x','').trim();
+                }
+                let smCap = 1, smUnit = '排';
+                if (colMap.smCap !== undefined) {
+                    const val = parseInt(row[colMap.smCap]);
+                    if (!isNaN(val)) smCap = val;
+                    if (row[colMap.smCap+1] && String(row[colMap.smCap+1]).includes('/')) smUnit = String(row[colMap.smCap+1]).replace('/','').replace('x','').trim();
+                }
+                items.push({
+                    id: `${code}_${zoneName}_${i}`,
+                    code: String(code).trim(),
+                    name: String(name).trim(),
+                    shelf: colMap.shelf !== undefined ? String(row[colMap.shelf]).trim() : '',
+                    zone: zoneName,
+                    units: { large: { name: lgUnit, cap: lgCap }, small: { name: smUnit, cap: smCap }, loose: { name: '顆', cap: 1 } },
+                    inputs: { large: null, small: null, loose: null },
+                    timestamp: null, user: null
+                });
+            }
+            return items;
+        };
+
+        const confirmImport = () => {
+            if (confirm(`匯入 ${importSummary.value.totalItems} 筆？`)) {
+                const oldDataMap = {};
+                inventory.value.forEach(item => { if (isItemComplete(item) || item.inputs.large !== null) oldDataMap[item.id] = item; });
+                inventory.value = tempImportData.value.map(newItem => {
+                    if (oldDataMap[newItem.id]) {
+                        newItem.inputs = oldDataMap[newItem.id].inputs;
+                        newItem.user = oldDataMap[newItem.id].user;
+                        newItem.timestamp = oldDataMap[newItem.id].timestamp;
+                    }
+                    return newItem;
+                });
+                localStorage.setItem('pharmacy_inventory_v3', JSON.stringify(inventory.value));
+                alert('匯入成功！');
+                tempImportData.value = [];
+                importSummary.value = { totalFiles: 0, totalItems: 0 };
+            }
+        };
+        const clearInventory = () => { if(confirm('確定清空？')) { inventory.value=[]; localStorage.removeItem('pharmacy_inventory_v3'); } };
+
+        // --- 業務邏輯 ---
+        const enterSystem = () => currentPage.value = 'inventory';
+        const exitCounting = () => { localStorage.setItem('pharmacy_inventory_v3', JSON.stringify(inventory.value)); currentPage.value = 'login'; };
+        const uniqueZones = computed(() => Array.from(new Set(inventory.value.map(i => i.zone))).sort());
         const isItemComplete = (item) => {
-            const l = item.inputs.large !== null;
+            const l = item.units.large.cap > 0 ? item.inputs.large !== null : true;
             const s = item.units.small.cap > 1 ? item.inputs.small !== null : true;
             const loose = item.inputs.loose !== null;
             return l && s && loose;
         };
-
         const calculateTotal = (item) => {
             if (!isItemComplete(item)) return 0;
-            const total = 
-                (item.inputs.large || 0) * item.units.large.cap +
-                (item.inputs.small || 0) * item.units.small.cap +
-                (item.inputs.loose || 0);
-            return total;
+            return (item.inputs.large || 0) * item.units.large.cap + (item.inputs.small || 0) * item.units.small.cap + (item.inputs.loose || 0);
         };
-
         const setAllZero = (item) => {
-            item.inputs.large = 0;
+            if(item.units.large.cap > 0) item.inputs.large = 0;
             if(item.units.small.cap > 1) item.inputs.small = 0;
             item.inputs.loose = 0;
-            saveToLocal();
+            markUpdated(item);
         };
-
         const updateQty = (item, type, amount) => {
-            if (item.inputs[type] === null) {
-                item.inputs[type] = 0;
-            }
+            if (item.inputs[type] === null) item.inputs[type] = 0;
             item.inputs[type] += amount;
             if (item.inputs[type] < 0) item.inputs[type] = 0;
-            saveToLocal();
+            markUpdated(item);
         };
-
-        const saveToLocal = () => {
-            const dataToSave = {};
-            inventory.value.forEach(item => {
-                dataToSave[item.code] = item.inputs;
-            });
-            localStorage.setItem('pharmacy_inventory_v9', JSON.stringify(dataToSave));
+        const markUpdated = (item) => {
+            item.user = currentUser.value;
+            item.timestamp = new Date().toISOString();
+            localStorage.setItem('pharmacy_inventory_v3', JSON.stringify(inventory.value));
         };
 
         const filteredInventory = computed(() => {
-            if (!searchQuery.value) return inventory.value;
-            const q = searchQuery.value.toLowerCase();
-            return inventory.value.filter(item => 
-                item.name.toLowerCase().includes(q) || 
-                item.code.toLowerCase().includes(q) ||
-                item.shelf.toLowerCase().includes(q)
-            );
-        });
-
-        const uncountedCount = computed(() => {
-            return inventory.value.filter(item => !isItemComplete(item)).length;
-        });
-
-        const progressPercent = computed(() => {
-            const total = inventory.value.length;
-            const done = total - uncountedCount.value;
-            return total === 0 ? 0 : (done / total) * 100;
-        });
-
-        const checkAndExport = () => {
-            if (uncountedCount.value > 0) {
-                const confirmed = confirm(`目前尚有 ${uncountedCount.value} 筆未盤點。\n\n這是「支援藥師」模式嗎？\n(按「確定」匯出，未盤點項目將留空)`);
-                if (!confirmed) return;
+            let list = inventory.value.filter(i => i.zone === currentZone.value);
+            if (searchQuery.value) {
+                const q = searchQuery.value.toLowerCase();
+                list = list.filter(i => i.name.toLowerCase().includes(q) || i.code.toLowerCase().includes(q));
             }
-            exportExcel();
-        };
+            return list;
+        });
+        const uncountedCount = computed(() => filteredInventory.value.filter(i => !isItemComplete(i)).length);
+        const progressPercent = computed(() => {
+            const total = filteredInventory.value.length;
+            return total === 0 ? 0 : ((total - uncountedCount.value) / total) * 100;
+        });
+        
+        // --- 新增: 盤點介面即時統計 ---
+        const currentZoneStats = computed(() => {
+            const total = filteredInventory.value.length;
+            const done = total - uncountedCount.value;
+            const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+            return { total, done, percent };
+        });
 
-        const exportExcel = () => {
-            const exportData = inventory.value.map(item => {
-                const formatVal = (val) => val === null ? '' : val;
-                
+        // --- 報表中心 ---
+        const zoneProgress = computed(() => {
+            const stats = {};
+            uniqueZones.value.forEach(z => stats[z] = { total: 0, done: 0 });
+            inventory.value.forEach(item => {
+                if (stats[item.zone]) {
+                    stats[item.zone].total++;
+                    if (isItemComplete(item)) stats[item.zone].done++;
+                }
+            });
+            return Object.keys(stats).map(zone => ({
+                name: zone,
+                total: stats[zone].total,
+                done: stats[zone].done,
+                percent: stats[zone].total === 0 ? 0 : Math.round((stats[zone].done / stats[zone].total) * 100)
+            }));
+        });
+
+        const exportZone = (zoneName) => {
+            const targetItems = inventory.value.filter(i => i.zone === zoneName);
+            const exportData = targetItems.map(item => {
+                const finished = isItemComplete(item);
+                let details = [];
+                if (item.units.large.cap > 0 && item.inputs.large !== null) details.push(`${item.inputs.large}${item.units.large.name}`);
+                if (item.units.small.cap > 1 && item.inputs.small !== null) details.push(`${item.inputs.small}${item.units.small.name}`);
+                if (item.inputs.loose !== null && item.inputs.loose > 0) details.push(`${item.inputs.loose}顆`);
+                if (finished && details.length === 0) details.push("0");
                 return {
-                    '藥品代碼': item.code,
-                    '藥品名稱': item.name,
-                    '櫃位': item.shelf,
-                    '大包裝輸入': formatVal(item.inputs.large),
-                    '小包裝輸入': formatVal(item.inputs.small),
-                    '零散輸入': formatVal(item.inputs.loose),
-                    '總盤點量(最小單位)': isItemComplete(item) ? calculateTotal(item) : '未盤點',
-                    '盤點人': isItemComplete(item) ? currentUser.value : '',
-                    '盤點時間': isItemComplete(item) ? new Date().toLocaleString() : ''
+                    '藥品代碼': item.code, '藥品名稱': item.name, '櫃位': item.shelf,
+                    '盤點內容': finished ? details.join(' ') : '未盤點',
+                    '總量(最小單位)': finished ? calculateTotal(item) : '',
+                    '盤點人': finished ? (item.user || '') : '',
+                    '盤點時間': finished && item.timestamp ? new Date(item.timestamp).toLocaleString() : ''
                 };
             });
-
             const ws = XLSX.utils.json_to_sheet(exportData);
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "盤點結果");
-            
-            const date = new Date().toISOString().slice(0,10);
-            const status = uncountedCount.value > 0 ? '_部分支援' : '_完整';
-            XLSX.writeFile(wb, `盤點報表_調A${status}_${date}.xlsx`);
+            XLSX.utils.book_append_sheet(wb, ws, "盤點明細");
+            XLSX.writeFile(wb, `盤點明細_${zoneName}_${new Date().toISOString().slice(0,10)}.xlsx`);
+        };
+
+        const exportMasterPivotReport = () => {
+            const zones = uniqueZones.value;
+            const itemMap = {};
+            inventory.value.forEach(item => {
+                if (!itemMap[item.code]) itemMap[item.code] = { code: item.code, name: item.name, totalsByZone: {} };
+                if (isItemComplete(item)) itemMap[item.code].totalsByZone[item.zone] = calculateTotal(item);
+                else itemMap[item.code].totalsByZone[item.zone] = 0;
+            });
+            const exportData = Object.values(itemMap).map(row => {
+                const excelRow = { '藥品代碼': row.code, '藥品名稱': row.name };
+                let grandTotal = 0;
+                zones.forEach(z => {
+                    const val = row.totalsByZone[z] || 0;
+                    excelRow[z] = val;
+                    grandTotal += val;
+                });
+                excelRow['全院總計'] = grandTotal;
+                return excelRow;
+            });
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "庫存總表");
+            XLSX.writeFile(wb, `庫存總表_全院_${new Date().toISOString().slice(0,10)}.xlsx`);
         };
 
         return {
-            currentPage,
-            currentUser,
-            staffList,
-            inventory,
-            searchQuery,
-            filteredInventory,
-            uncountedCount,
-            progressPercent,
-            enterSystem,
-            isItemComplete,
-            calculateTotal,
-            updateQty,
-            setAllZero,
-            checkAndExport
+            currentPage, currentUser, currentZone, staffList, inventory, searchQuery, filteredInventory,
+            uncountedCount, progressPercent, uniqueZones, zoneProgress, currentZoneStats,
+            isProcessing, importSummary, handleFileUpload, confirmImport, clearInventory, handleStaffUpload, clearStaff,
+            enterSystem, exitCounting, isItemComplete, calculateTotal, setAllZero, updateQty, markUpdated,
+            exportZone, exportMasterPivotReport, enterAdmin
         };
     }
 }).mount('#app');
