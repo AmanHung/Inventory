@@ -48,13 +48,6 @@
 
 <div id="app" class="w-full max-w-md mx-auto h-[100dvh] bg-white shadow-2xl flex flex-col relative border-x border-gray-200 overflow-hidden">
 
-    <div class="absolute top-3 right-3 z-50 flex items-center gap-2 pointer-events-none">
-        <div class="text-[10px] px-2 py-1 rounded bg-white/90 backdrop-blur border shadow-sm flex items-center">
-            <span class="dot" :class="isOnline ? 'dot-green' : 'dot-red'"></span>
-            {{ isOnline ? '連線正常' : '斷線' }}
-        </div>
-    </div>
-
     <div v-if="page === 'admin'" class="flex-1 p-6 bg-gray-50 overflow-y-auto">
         <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">⚙️ 系統維護</h2>
         
@@ -156,11 +149,15 @@
                     <div class="text-xs text-blue-200">{{ selZone }}</div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <div v-if="isSaving" class="text-xs text-blue-200 animate-pulse">☁️ 儲存中...</div>
-                    <div v-else class="text-xs text-green-300 font-bold">✔ 已同步</div>
-                    <button @click="page='home'" class="bg-blue-800 border border-blue-500 px-3 py-1 rounded text-xs hover:bg-blue-700 btn-act">離開</button>
-                </div>
-            </div>
+    <div class="flex items-center text-[10px] bg-blue-700/80 px-1.5 py-0.5 rounded border border-blue-500">
+        <span class="dot" :class="isOnline ? 'dot-green' : 'dot-red'" style="width:6px; height:6px; margin-right:3px;"></span>
+        {{ isOnline ? '連線' : '斷線' }}
+    </div>
+    
+    <div v-if="isSaving" class="text-xs text-blue-200 animate-pulse">☁️...</div>
+    <div v-else class="text-xs text-green-300 font-bold">✔同步</div>
+    <button @click="page='home'" class="bg-blue-800 border border-blue-500 px-2 py-1 rounded text-xs hover:bg-blue-700 btn-act">離開</button>
+</div>
             
             <div class="flex justify-between text-xs text-blue-100 mb-1">
                 <span>完成進度</span>
@@ -586,3 +583,4 @@
 </script>
 </body>
 </html>
+
