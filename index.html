@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v4.6 (格式淨化版)</title>
+    <title>藥局盤點系統 v4.7 (穩定修復版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/shim.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/cpexcel.full.min.js"></script>
     
@@ -27,12 +29,12 @@
         .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
         .status-online { background-color: #22c55e; box-shadow: 0 0 5px #22c55e; }
         .status-offline { background-color: #ef4444; }
-        
-        /* 診斷區塊 */
-        #debug-area { font-family: monospace; font-size: 12px; background: #1e1e1e; color: #00ff00; padding: 10px; margin-top: 10px; border-radius: 5px; max-height: 200px; overflow: auto; white-space: pre-wrap; display: none; }
+        #error-console { display: none; position: fixed; bottom: 0; left: 0; width: 100%; background: #fee2e2; color: #b91c1c; padding: 10px; z-index: 9999; font-size: 12px; border-top: 2px solid #ef4444; max-height: 200px; overflow-y: auto; }
     </style>
 </head>
 <body>
+
+<div id="error-console"></div>
 
 <div id="app" class="w-full max-w-md mx-auto min-h-screen bg-white shadow-xl flex flex-col border-x border-gray-200 relative">
 
@@ -45,9 +47,6 @@
         <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
             <span class="text-blue-600">⚙️</span> 資料維護
         </h2>
-        
-        <div id="debug-area"></div>
-
         <div class="bg-white p-4 rounded-lg shadow mb-6 border-l-4 border-indigo-500">
             <h3 class="font-bold text-lg mb-2 text-indigo-900">1. 人員名單</h3>
             <div class="flex items-center justify-between mb-2">
@@ -59,23 +58,18 @@
         </div>
         <div class="bg-white p-4 rounded-lg shadow mb-6 border-l-4 border-blue-500">
             <h3 class="font-bold text-lg mb-2 text-blue-900">2. 藥品盤點表</h3>
-            <p class="text-xs text-gray-500 mb-3 text-red-600">注意：重新上傳將會覆蓋雲端現有的盤點資料！</p>
             <div class="flex items-center justify-between mb-2">
                 <span class="text-sm font-bold text-gray-700">雲端: {{ inventory.length }} 筆</span>
                 <button v-if="inventory.length > 0" @click="clearInventory" class="text-xs text-red-500 underline">清空</button>
             </div>
             <input type="file" ref="fileInput" multiple accept=".csv,.xlsx,.xls" @change="handleFileUpload" class="hidden">
-            <button @click="$refs.fileInput.click()" class="w-full bg-blue-100 text-blue-700 font-bold py-3 rounded-lg border border-blue-300 hover:bg-blue-200 transition mb-2">📂 選擇盤點表檔案</button>
+            <button @click="$refs.fileInput.click()" class="w-full bg-blue-100 text-blue-700 font-bold py-3 rounded-lg border border-blue-300 hover:bg-blue-200 transition mb-2">📂 上傳盤點表 CSV</button>
+            <div v-if="isProcessing" class="flex items-center justify-center gap-3 py-4 text-gray-600"><div class="loader"></div> 上傳中...</div>
             
-            <div v-if="isProcessing" class="flex items-center justify-center gap-3 py-4 text-gray-600"><div class="loader"></div> 處理中...</div>
-
             <div v-if="importSummary.totalFiles > 0" class="mt-4 p-3 bg-green-50 border border-green-200 rounded text-sm text-green-800">
                 <p>✅ 讀取檔案: <strong>{{ importSummary.totalFiles }}</strong> 個</p>
                 <p>💊 藥品總數: <strong>{{ importSummary.totalItems }}</strong> 筆</p>
-                <p class="text-xs text-gray-500 mt-1">請查看上方黑色視窗確認資料是否正確</p>
-                <button @click="confirmImport" class="mt-3 w-full bg-green-600 text-white font-bold py-2 rounded hover:bg-green-700 shadow">
-                    確認上傳至雲端
-                </button>
+                <button @click="confirmImport" class="mt-3 w-full bg-green-600 text-white font-bold py-2 rounded hover:bg-green-700 shadow">確認上傳至雲端</button>
             </div>
         </div>
         <button @click="currentPage = 'login'" class="mt-auto w-full bg-gray-600 text-white font-bold py-3 rounded-lg shadow hover:bg-gray-700">返回首頁</button>
@@ -108,16 +102,16 @@
     <div v-else-if="currentPage === 'login'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50">
         <div class="w-full max-w-sm">
             <h1 class="text-3xl font-bold text-blue-800 text-center mb-1">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-sm mb-8">v4.6 (格式淨化版)</p>
+            <p class="text-center text-gray-400 text-sm mb-8">v4.7 (穩定修復版)</p>
             
             <div v-if="!isOnline" class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded shadow-sm">
                 <p class="font-bold">⚠️ 連線中斷</p>
-                <p class="text-xs mt-1">請檢查網路或 Firebase 設定。</p>
+                <p class="text-xs mt-1">請檢查網路或重新整理。</p>
             </div>
 
             <div v-if="isOnline && inventory.length === 0" class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4 rounded shadow-sm">
                 <p class="font-bold">⚠️ 資料庫是空的</p>
-                <p class="text-sm">請點擊下方「資料維護」進行初始匯入。</p>
+                <p class="text-sm">請管理員點擊下方「資料維護」進行匯入。</p>
             </div>
             
             <div v-if="inventory.length > 0 && staffList.length > 0">
@@ -132,6 +126,7 @@
                     <option v-for="zone in uniqueZones" :value="zone">{{ zone }}</option>
                 </select>
                 <button @click="enterSystem" :disabled="!currentUser || !currentZone" :class="{'opacity-50 cursor-not-allowed': !currentUser || !currentZone}" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow hover:bg-blue-700 transition text-lg mb-6">開始盤點</button>
+                
                 <hr class="border-gray-300 mb-6">
                 <div class="grid grid-cols-2 gap-4">
                     <button @click="currentPage = 'report'" class="bg-white border border-gray-300 text-gray-700 font-bold py-2 rounded shadow hover:bg-gray-50 flex flex-col items-center"><span class="text-2xl mb-1">📊</span> 報表中心</button>
@@ -170,6 +165,12 @@
 </div>
 
 <script type="module">
+    window.onerror = function(msg, source, lineno, colno, error) {
+        document.getElementById('error-console').style.display='block';
+        document.getElementById('error-console').innerHTML += `❌ ${msg}<br>`;
+        return false;
+    };
+
     import { createApp, ref, computed, onMounted } from "https://unpkg.com/vue@3/dist/vue.esm-browser.js";
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getDatabase, ref as dbRef, set, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
@@ -206,9 +207,16 @@
                 if(!db) return;
                 onValue(dbRef(db, ".info/connected"), (snap) => isOnline.value = snap.val() === true);
                 onValue(dbRef(db, "staff"), (snap) => staffList.value = snap.val() || []);
+                
+                // 關鍵修復：這裡接收資料時，如果有 null 會導致後續運算崩潰
                 onValue(dbRef(db, "inventory"), (snap) => {
                     const data = snap.val();
-                    inventory.value = data ? (Array.isArray(data) ? data : Object.values(data)) : [];
+                    if (data) {
+                        // 強制過濾 null/undefined 項目
+                        inventory.value = (Array.isArray(data) ? data : Object.values(data)).filter(item => item !== null && item !== undefined && item.code);
+                    } else {
+                        inventory.value = [];
+                    }
                 });
             });
 
@@ -228,18 +236,11 @@
             };
             const saveItemToCloud = (item) => {
                 if(!db) return; const idx = inventory.value.findIndex(i=>i.id===item.id); if(idx===-1) return;
-                // 淨化資料再上傳
                 const safeData = JSON.parse(JSON.stringify({ inputs:item.inputs, user:item.user, timestamp:item.timestamp }));
                 update(dbRef(db, `inventory/${idx}`), safeData).then(()=>isSaving.value=false);
             };
 
             // 匯入邏輯
-            const logDebug = (msg) => {
-                const el = document.getElementById('debug-area');
-                el.style.display = 'block';
-                el.textContent = msg + "\n----------------\n" + el.textContent;
-            };
-
             const handleStaffUpload = (e) => {
                 const file = e.target.files[0]; if(!file) return;
                 const r = new FileReader(); r.onload = (evt) => {
@@ -248,35 +249,20 @@
                     if(arr.length>0) { staffList.value=arr; set(dbRef(db,"staff"), arr).then(()=>alert("上傳成功")); }
                 }; r.readAsText(file);
             };
-
             const handleFileUpload = async (e) => {
                 const files = e.target.files; if(!files.length) return;
                 isProcessing.value = true; tempImportData.value=[]; importSummary.value={totalFiles:0,totalItems:0};
-                
-                // 清空診斷區
-                document.getElementById('debug-area').textContent = "開始讀取檔案...\n";
-
                 for(let i=0; i<files.length; i++) {
                     try {
                         const data = await parseSingleFile(files[i], getZoneName(files[i].name));
                         tempImportData.value = [...tempImportData.value, ...data];
                         importSummary.value.totalFiles++;
-                    } catch(err) { 
-                        logDebug(`讀取失敗: ${files[i].name} - ${err}`);
-                    }
+                    } catch(err) { console.error(err); }
                 }
                 importSummary.value.totalItems = tempImportData.value.length;
                 isProcessing.value = false;
-                
-                if(tempImportData.value.length > 0) {
-                    const preview = JSON.stringify(tempImportData.value.slice(0, 3), null, 2);
-                    logDebug(`讀取成功！共 ${tempImportData.value.length} 筆。\n前 3 筆預覽:\n${preview}`);
-                } else {
-                    logDebug("讀取結果為空！請檢查檔案編碼或標題。");
-                    alert("上傳失敗：讀取不到資料。請查看上方黑色診斷視窗。");
-                }
+                if(tempImportData.value.length === 0) alert("未讀取到資料！");
             };
-
             const getZoneName = (n) => { let s=n.replace('.csv','').replace('.xlsx','').replace('.xls',''); const m=s.match(/-\s*(.+)/); return (m&&m[1])?m[1].trim():s; };
             
             const parseSingleFile = (file, zoneName) => {
@@ -295,7 +281,6 @@
                 if(!rows || rows.length===0) return [];
                 let headerIdx = -1, colMap = {};
                 
-                // 1. 找標題
                 for(let i=0; i<Math.min(rows.length,20); i++) {
                     const rowText = rows[i].map(c=>String(c).trim()).join(' ');
                     if(rowText.includes('代碼') && rowText.includes('名稱')) {
@@ -314,17 +299,12 @@
                     }
                 }
                 
-                // 2. 終極備案：如果找不到標題，就強制套用格式
-                if(headerIdx === -1) {
-                    headerIdx = 0; 
-                    colMap = { code:0, name:1, shelf:3, lgCap:4, lgUnit:5, smCap:6, smUnit:7 };
-                }
+                if(headerIdx === -1) { headerIdx = 0; colMap = { code:0, name:1, shelf:3, lgCap:4, lgUnit:5, smCap:6, smUnit:7 }; }
                 
                 const items = [];
                 for(let i=headerIdx+1; i<rows.length; i++) {
                     const row = rows[i];
-                    if(row[colMap.code] === undefined) continue; // 修正：檢查是否 undefined
-                    
+                    if(row[colMap.code] === undefined) continue;
                     const code = String(row[colMap.code]).trim();
                     const name = colMap.name!==undefined ? String(row[colMap.name]).trim() : '';
                     if(!code) continue;
@@ -347,12 +327,9 @@
             const confirmImport = () => {
                 if(confirm(`確認上傳 ${importSummary.value.totalItems} 筆資料？`)) {
                     isProcessing.value = true;
-                    // 關鍵修正：JSON.parse(JSON.stringify(...)) 移除所有 undefined
-                    const cleanData = JSON.parse(JSON.stringify(tempImportData.value));
-                    set(dbRef(db,"inventory"), cleanData)
-                       .then(()=>alert("上傳成功"))
-                       .catch(e=>alert("上傳 Firebase 失敗: " + e.message))
-                       .finally(()=>{ isProcessing.value=false; tempImportData.value=[]; });
+                    // 關鍵修復：上傳前再次過濾並淨化，確保沒有 null
+                    const cleanData = tempImportData.value.filter(item => item && item.code).map(item => JSON.parse(JSON.stringify(item)));
+                    set(dbRef(db,"inventory"), cleanData).then(()=>alert("上傳成功")).finally(()=>{ isProcessing.value=false; tempImportData.value=[]; });
                 }
             };
             
