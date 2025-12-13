@@ -3,11 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v4.5 (編碼終極修復版)</title>
+    <title>藥局盤點系統 v4.6 (格式淨化版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/shim.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/cpexcel.full.min.js"></script>
     
@@ -29,12 +27,12 @@
         .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
         .status-online { background-color: #22c55e; box-shadow: 0 0 5px #22c55e; }
         .status-offline { background-color: #ef4444; }
-        #error-console { display: none; position: fixed; bottom: 0; left: 0; width: 100%; background: #fee2e2; color: #b91c1c; padding: 10px; z-index: 9999; font-size: 12px; border-top: 2px solid #ef4444; max-height: 200px; overflow-y: auto; }
+        
+        /* 診斷區塊 */
+        #debug-area { font-family: monospace; font-size: 12px; background: #1e1e1e; color: #00ff00; padding: 10px; margin-top: 10px; border-radius: 5px; max-height: 200px; overflow: auto; white-space: pre-wrap; display: none; }
     </style>
 </head>
 <body>
-
-<div id="error-console"></div>
 
 <div id="app" class="w-full max-w-md mx-auto min-h-screen bg-white shadow-xl flex flex-col border-x border-gray-200 relative">
 
@@ -47,6 +45,9 @@
         <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
             <span class="text-blue-600">⚙️</span> 資料維護
         </h2>
+        
+        <div id="debug-area"></div>
+
         <div class="bg-white p-4 rounded-lg shadow mb-6 border-l-4 border-indigo-500">
             <h3 class="font-bold text-lg mb-2 text-indigo-900">1. 人員名單</h3>
             <div class="flex items-center justify-between mb-2">
@@ -58,13 +59,24 @@
         </div>
         <div class="bg-white p-4 rounded-lg shadow mb-6 border-l-4 border-blue-500">
             <h3 class="font-bold text-lg mb-2 text-blue-900">2. 藥品盤點表</h3>
+            <p class="text-xs text-gray-500 mb-3 text-red-600">注意：重新上傳將會覆蓋雲端現有的盤點資料！</p>
             <div class="flex items-center justify-between mb-2">
                 <span class="text-sm font-bold text-gray-700">雲端: {{ inventory.length }} 筆</span>
                 <button v-if="inventory.length > 0" @click="clearInventory" class="text-xs text-red-500 underline">清空</button>
             </div>
             <input type="file" ref="fileInput" multiple accept=".csv,.xlsx,.xls" @change="handleFileUpload" class="hidden">
-            <button @click="$refs.fileInput.click()" class="w-full bg-blue-100 text-blue-700 font-bold py-3 rounded-lg border border-blue-300 hover:bg-blue-200 transition mb-2">📂 上傳盤點表 CSV</button>
-            <div v-if="isProcessing" class="flex items-center justify-center gap-3 py-4 text-gray-600"><div class="loader"></div> 上傳中...</div>
+            <button @click="$refs.fileInput.click()" class="w-full bg-blue-100 text-blue-700 font-bold py-3 rounded-lg border border-blue-300 hover:bg-blue-200 transition mb-2">📂 選擇盤點表檔案</button>
+            
+            <div v-if="isProcessing" class="flex items-center justify-center gap-3 py-4 text-gray-600"><div class="loader"></div> 處理中...</div>
+
+            <div v-if="importSummary.totalFiles > 0" class="mt-4 p-3 bg-green-50 border border-green-200 rounded text-sm text-green-800">
+                <p>✅ 讀取檔案: <strong>{{ importSummary.totalFiles }}</strong> 個</p>
+                <p>💊 藥品總數: <strong>{{ importSummary.totalItems }}</strong> 筆</p>
+                <p class="text-xs text-gray-500 mt-1">請查看上方黑色視窗確認資料是否正確</p>
+                <button @click="confirmImport" class="mt-3 w-full bg-green-600 text-white font-bold py-2 rounded hover:bg-green-700 shadow">
+                    確認上傳至雲端
+                </button>
+            </div>
         </div>
         <button @click="currentPage = 'login'" class="mt-auto w-full bg-gray-600 text-white font-bold py-3 rounded-lg shadow hover:bg-gray-700">返回首頁</button>
     </div>
@@ -96,11 +108,11 @@
     <div v-else-if="currentPage === 'login'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50">
         <div class="w-full max-w-sm">
             <h1 class="text-3xl font-bold text-blue-800 text-center mb-1">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-sm mb-8">v4.5 (編碼終極修復版)</p>
+            <p class="text-center text-gray-400 text-sm mb-8">v4.6 (格式淨化版)</p>
             
             <div v-if="!isOnline" class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded shadow-sm">
                 <p class="font-bold">⚠️ 連線中斷</p>
-                <p class="text-xs mt-1">請檢查網路或 Firebase 狀態。</p>
+                <p class="text-xs mt-1">請檢查網路或 Firebase 設定。</p>
             </div>
 
             <div v-if="isOnline && inventory.length === 0" class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4 rounded shadow-sm">
@@ -158,17 +170,10 @@
 </div>
 
 <script type="module">
-    window.onerror = function(msg, source, lineno, colno, error) {
-        document.getElementById('error-console').style.display='block';
-        document.getElementById('error-console').innerHTML += `❌ ${msg}<br>`;
-        return false;
-    };
-
     import { createApp, ref, computed, onMounted } from "https://unpkg.com/vue@3/dist/vue.esm-browser.js";
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getDatabase, ref as dbRef, set, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-    // 您的 Firebase Config
     const firebaseConfig = {
       apiKey: "AIzaSyDZuNztwb9aLG1RqeDOyrj6KJrPhwBFi9M",
       authDomain: "fyh-pharmacy-inventory.firebaseapp.com",
@@ -207,7 +212,7 @@
                 });
             });
 
-            // 寫入
+            // 寫入與更新
             let timeoutMap = {};
             const debouncedUpdate = (item) => {
                 isSaving.value = true; item.user = currentUser.value; item.timestamp = new Date().toISOString();
@@ -223,10 +228,18 @@
             };
             const saveItemToCloud = (item) => {
                 if(!db) return; const idx = inventory.value.findIndex(i=>i.id===item.id); if(idx===-1) return;
-                update(dbRef(db, `inventory/${idx}`), { inputs:item.inputs, user:item.user, timestamp:item.timestamp }).then(()=>isSaving.value=false);
+                // 淨化資料再上傳
+                const safeData = JSON.parse(JSON.stringify({ inputs:item.inputs, user:item.user, timestamp:item.timestamp }));
+                update(dbRef(db, `inventory/${idx}`), safeData).then(()=>isSaving.value=false);
             };
 
-            // 匯入
+            // 匯入邏輯
+            const logDebug = (msg) => {
+                const el = document.getElementById('debug-area');
+                el.style.display = 'block';
+                el.textContent = msg + "\n----------------\n" + el.textContent;
+            };
+
             const handleStaffUpload = (e) => {
                 const file = e.target.files[0]; if(!file) return;
                 const r = new FileReader(); r.onload = (evt) => {
@@ -235,27 +248,41 @@
                     if(arr.length>0) { staffList.value=arr; set(dbRef(db,"staff"), arr).then(()=>alert("上傳成功")); }
                 }; r.readAsText(file);
             };
+
             const handleFileUpload = async (e) => {
                 const files = e.target.files; if(!files.length) return;
                 isProcessing.value = true; tempImportData.value=[]; importSummary.value={totalFiles:0,totalItems:0};
+                
+                // 清空診斷區
+                document.getElementById('debug-area').textContent = "開始讀取檔案...\n";
+
                 for(let i=0; i<files.length; i++) {
                     try {
                         const data = await parseSingleFile(files[i], getZoneName(files[i].name));
                         tempImportData.value = [...tempImportData.value, ...data];
                         importSummary.value.totalFiles++;
-                    } catch(err) {}
+                    } catch(err) { 
+                        logDebug(`讀取失敗: ${files[i].name} - ${err}`);
+                    }
                 }
                 importSummary.value.totalItems = tempImportData.value.length;
                 isProcessing.value = false;
-                if(tempImportData.value.length === 0) alert("上傳失敗：找不到藥品資料。請確認檔案格式或編碼(Big5)。");
+                
+                if(tempImportData.value.length > 0) {
+                    const preview = JSON.stringify(tempImportData.value.slice(0, 3), null, 2);
+                    logDebug(`讀取成功！共 ${tempImportData.value.length} 筆。\n前 3 筆預覽:\n${preview}`);
+                } else {
+                    logDebug("讀取結果為空！請檢查檔案編碼或標題。");
+                    alert("上傳失敗：讀取不到資料。請查看上方黑色診斷視窗。");
+                }
             };
+
             const getZoneName = (n) => { let s=n.replace('.csv','').replace('.xlsx','').replace('.xls',''); const m=s.match(/-\s*(.+)/); return (m&&m[1])?m[1].trim():s; };
             
             const parseSingleFile = (file, zoneName) => {
                 return new Promise((resolve) => {
                     const r = new FileReader();
                     r.onload = (evt) => {
-                        // 使用 readAsBinaryString + type:'binary' 讓 cpexcel 發揮作用處理 Big5
                         const wb = window.XLSX.read(evt.target.result, { type: 'binary' });
                         const rows = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1, defval:'' });
                         resolve(processRows(rows, zoneName));
@@ -268,7 +295,7 @@
                 if(!rows || rows.length===0) return [];
                 let headerIdx = -1, colMap = {};
                 
-                // 1. 正常搜尋標題
+                // 1. 找標題
                 for(let i=0; i<Math.min(rows.length,20); i++) {
                     const rowText = rows[i].map(c=>String(c).trim()).join(' ');
                     if(rowText.includes('代碼') && rowText.includes('名稱')) {
@@ -287,9 +314,8 @@
                     }
                 }
                 
-                // 2. 終極備案：如果找不到標題，就強制套用您的格式 (調A.csv)
+                // 2. 終極備案：如果找不到標題，就強制套用格式
                 if(headerIdx === -1) {
-                    // 假設第0行是標題，從第1行開始是資料
                     headerIdx = 0; 
                     colMap = { code:0, name:1, shelf:3, lgCap:4, lgUnit:5, smCap:6, smUnit:7 };
                 }
@@ -297,17 +323,20 @@
                 const items = [];
                 for(let i=headerIdx+1; i<rows.length; i++) {
                     const row = rows[i];
-                    if(!row[colMap.code]) continue; // 無代碼則跳過
+                    if(row[colMap.code] === undefined) continue; // 修正：檢查是否 undefined
+                    
                     const code = String(row[colMap.code]).trim();
                     const name = colMap.name!==undefined ? String(row[colMap.name]).trim() : '';
-                    
+                    if(!code) continue;
+
                     let lgCap=0, lgUnit='盒';
                     if(colMap.lgCap!==undefined) { const v=parseInt(row[colMap.lgCap]); if(!isNaN(v)) lgCap=v; if(colMap.lgUnit!==undefined && row[colMap.lgUnit]) lgUnit=String(row[colMap.lgUnit]).replace('/','').replace('x','').trim(); }
                     let smCap=1, smUnit='排';
                     if(colMap.smCap!==undefined) { const v=parseInt(row[colMap.smCap]); if(!isNaN(v)) smCap=v; if(colMap.smUnit!==undefined && row[colMap.smUnit]) smUnit=String(row[colMap.smUnit]).replace('/','').replace('x','').trim(); }
 
                     items.push({
-                        id: `${code}_${zoneName}_${i}`, code, name, shelf: colMap.shelf!==undefined?String(row[colMap.shelf]).trim():'', zone: zoneName,
+                        id: `${code}_${zoneName}_${i}`, code, name, 
+                        shelf: colMap.shelf!==undefined?String(row[colMap.shelf]).trim():'', zone: zoneName,
                         units: { large: { name: lgUnit, cap: lgCap }, small: { name: smUnit, cap: smCap }, loose: { name: '顆', cap: 1 } },
                         inputs: { large: null, small: null, loose: null }, timestamp: null, user: null
                     });
@@ -318,7 +347,12 @@
             const confirmImport = () => {
                 if(confirm(`確認上傳 ${importSummary.value.totalItems} 筆資料？`)) {
                     isProcessing.value = true;
-                    set(dbRef(db,"inventory"), tempImportData.value).then(()=>alert("上傳成功")).finally(()=>{ isProcessing.value=false; tempImportData.value=[]; });
+                    // 關鍵修正：JSON.parse(JSON.stringify(...)) 移除所有 undefined
+                    const cleanData = JSON.parse(JSON.stringify(tempImportData.value));
+                    set(dbRef(db,"inventory"), cleanData)
+                       .then(()=>alert("上傳成功"))
+                       .catch(e=>alert("上傳 Firebase 失敗: " + e.message))
+                       .finally(()=>{ isProcessing.value=false; tempImportData.value=[]; });
                 }
             };
             
