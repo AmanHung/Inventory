@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v4.2 (除錯版)</title>
+    <title>藥局盤點系統 v4.3 (匯入修復版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
@@ -26,8 +26,6 @@
         .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
         .status-online { background-color: #22c55e; box-shadow: 0 0 5px #22c55e; }
         .status-offline { background-color: #ef4444; }
-        
-        /* 錯誤訊息區塊 */
         #error-console { display: none; position: fixed; bottom: 0; left: 0; width: 100%; background: #fee2e2; color: #b91c1c; padding: 10px; z-index: 9999; font-size: 12px; border-top: 2px solid #ef4444; max-height: 200px; overflow-y: auto; }
     </style>
 </head>
@@ -95,11 +93,11 @@
     <div v-else-if="currentPage === 'login'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50">
         <div class="w-full max-w-sm">
             <h1 class="text-3xl font-bold text-blue-800 text-center mb-1">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-sm mb-8">v4.2 (Firebase雲端同步版)</p>
+            <p class="text-center text-gray-400 text-sm mb-8">v4.3 (匯入修復版)</p>
             
             <div v-if="!isOnline" class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded shadow-sm">
                 <p class="font-bold">⚠️ 連線中斷</p>
-                <p class="text-xs mt-1">請檢查網路，或確認 Firebase 安全規則是否開啟。</p>
+                <p class="text-xs mt-1">請檢查網路，或確認 Firebase 安全規則。</p>
             </div>
 
             <div v-if="isOnline && inventory.length === 0" class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4 rounded shadow-sm">
@@ -157,20 +155,18 @@
 </div>
 
 <script type="module">
-    // 全域錯誤捕捉 (顯示在畫面上)
+    // 錯誤捕捉
     window.onerror = function(msg, source, lineno, colno, error) {
-        const consoleDiv = document.getElementById('error-console');
-        consoleDiv.style.display = 'block';
-        consoleDiv.innerHTML += `❌ Error: ${msg} <br><small>${source}:${lineno}</small><br>`;
+        document.getElementById('error-console').style.display='block';
+        document.getElementById('error-console').innerHTML += `❌ ${msg}<br>`;
         return false;
     };
 
-    // 匯入 Vue 與 Firebase
     import { createApp, ref, computed, onMounted } from "https://unpkg.com/vue@3/dist/vue.esm-browser.js";
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getDatabase, ref as dbRef, set, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-    // 您提供的 Firebase Config
+    // 您的 Firebase Config
     const firebaseConfig = {
       apiKey: "AIzaSyDZuNztwb9aLG1RqeDOyrj6KJrPhwBFi9M",
       authDomain: "fyh-pharmacy-inventory.firebaseapp.com",
@@ -186,10 +182,10 @@
     try {
         const app = initializeApp(firebaseConfig);
         db = getDatabase(app);
-        console.log("Firebase initialized");
+        console.log("Firebase Init OK");
     } catch(e) {
         document.getElementById('error-console').style.display='block';
-        document.getElementById('error-console').innerText = "Firebase Init Failed: " + e.message;
+        document.getElementById('error-console').innerText = "Init Error: "+e.message;
     }
 
     createApp({
@@ -200,120 +196,104 @@
             const searchQuery = ref('');
             const staffList = ref([]);
             const inventory = ref([]);
-            
             const isProcessing = ref(false);
             const isOnline = ref(false);
             const isSaving = ref(false);
             const importSummary = ref({ totalFiles: 0, totalItems: 0 });
             const tempImportData = ref([]);
-            const exportTargetZone = ref('');
-
+            
             onMounted(() => {
                 if(!db) return;
-                // 監聽連線
                 onValue(dbRef(db, ".info/connected"), (snap) => isOnline.value = snap.val() === true);
-                // 監聽人員
                 onValue(dbRef(db, "staff"), (snap) => staffList.value = snap.val() || []);
-                // 監聽庫存
                 onValue(dbRef(db, "inventory"), (snap) => {
                     const data = snap.val();
                     inventory.value = data ? (Array.isArray(data) ? data : Object.values(data)) : [];
                 });
             });
 
-            // 寫入邏輯
+            // 資料寫入與更新
             let timeoutMap = {};
             const debouncedUpdate = (item) => {
-                isSaving.value = true;
-                item.user = currentUser.value;
-                item.timestamp = new Date().toISOString();
+                isSaving.value = true; item.user = currentUser.value; item.timestamp = new Date().toISOString();
                 clearTimeout(timeoutMap[item.id]);
                 timeoutMap[item.id] = setTimeout(() => saveItemToCloud(item), 500);
             };
             const updateQty = (item, type, amount) => {
-                if (item.inputs[type] === null) item.inputs[type] = 0;
+                if(item.inputs[type]===null) item.inputs[type]=0;
                 item.inputs[type] += amount;
-                if (item.inputs[type] < 0) item.inputs[type] = 0;
-                item.user = currentUser.value;
-                item.timestamp = new Date().toISOString();
-                isSaving.value = true;
-                saveItemToCloud(item);
+                if(item.inputs[type]<0) item.inputs[type]=0;
+                item.user = currentUser.value; item.timestamp = new Date().toISOString();
+                isSaving.value = true; saveItemToCloud(item);
             };
             const setAllZero = (item) => {
                 if(item.units.large.cap>0) item.inputs.large=0;
                 if(item.units.small.cap>1) item.inputs.small=0;
                 item.inputs.loose=0;
-                item.user = currentUser.value;
-                item.timestamp = new Date().toISOString();
-                isSaving.value = true;
-                saveItemToCloud(item);
+                item.user = currentUser.value; item.timestamp = new Date().toISOString();
+                isSaving.value = true; saveItemToCloud(item);
             };
             const saveItemToCloud = (item) => {
                 if(!db) return;
-                const index = inventory.value.findIndex(i => i.id === item.id);
-                if(index === -1) return;
-                update(dbRef(db, `inventory/${index}`), {
-                    inputs: item.inputs, user: item.user, timestamp: item.timestamp
-                }).then(() => {
-                    isSaving.value = false;
-                    delete timeoutMap[item.id];
-                });
+                const idx = inventory.value.findIndex(i=>i.id===item.id);
+                if(idx===-1) return;
+                update(dbRef(db, `inventory/${idx}`), { inputs:item.inputs, user:item.user, timestamp:item.timestamp })
+                    .then(()=>isSaving.value=false);
             };
 
-            // 匯入邏輯
-            const handleStaffUpload = (event) => {
-                const file = event.target.files[0];
-                if(!file) return;
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    let raw = e.target.result.replace(/人員名單/g,'').replace(/\r\n/g,',').replace(/\n/g,',');
-                    const names = raw.split(',').map(s=>s.trim()).filter(s=>s.length>0);
-                    if(names.length>0) {
-                        staffList.value = names;
-                        set(dbRef(db, "staff"), names).then(()=>alert("人員上傳成功"));
-                    }
+            // 匯入邏輯 (修復版：寬鬆辨識)
+            const handleStaffUpload = (e) => {
+                const file = e.target.files[0]; if(!file) return;
+                const r = new FileReader();
+                r.onload = (evt) => {
+                    let txt = evt.target.result.replace(/人員名單/g,'').replace(/\r\n/g,',').replace(/\n/g,',');
+                    const arr = txt.split(',').map(s=>s.trim()).filter(s=>s.length>0);
+                    if(arr.length>0) { staffList.value=arr; set(dbRef(db,"staff"), arr).then(()=>alert("上傳成功")); }
                 };
-                reader.readAsText(file);
+                r.readAsText(file);
             };
-            const handleFileUpload = async (event) => {
-                const files = event.target.files;
-                if(!files.length) return;
-                isProcessing.value = true;
-                tempImportData.value = [];
-                importSummary.value = { totalFiles: 0, totalItems: 0 };
+
+            const handleFileUpload = async (e) => {
+                const files = e.target.files; if(!files.length) return;
+                isProcessing.value = true; tempImportData.value=[]; importSummary.value={totalFiles:0,totalItems:0};
                 for(let i=0; i<files.length; i++) {
                     try {
                         const data = await parseSingleFile(files[i], getZoneName(files[i].name));
                         tempImportData.value = [...tempImportData.value, ...data];
                         importSummary.value.totalFiles++;
-                    } catch(e){}
+                    } catch(err) { console.error(err); }
                 }
                 importSummary.value.totalItems = tempImportData.value.length;
                 isProcessing.value = false;
+                if(tempImportData.value.length === 0) alert("未讀取到任何藥品！請確認 Excel 標題列是否包含「代碼」與「名稱」。");
             };
-            const getZoneName = (fname) => {
-                let name = fname.replace('.csv','').replace('.xlsx','').replace('.xls','');
-                const match = name.match(/-\s*(.+)/);
-                return (match && match[1]) ? match[1].trim() : name;
-            };
+
+            const getZoneName = (n) => { let s=n.replace('.csv','').replace('.xlsx','').replace('.xls',''); const m=s.match(/-\s*(.+)/); return (m&&m[1])?m[1].trim():s; };
+            
             const parseSingleFile = (file, zoneName) => {
                 return new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-                        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1, defval: '' });
+                    const r = new FileReader();
+                    r.onload = (evt) => {
+                        const wb = window.XLSX.read(new Uint8Array(evt.target.result), { type: 'array' });
+                        const rows = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1, defval:'' });
                         resolve(processRows(rows, zoneName));
                     };
-                    reader.readAsArrayBuffer(file);
+                    r.readAsArrayBuffer(file);
                 });
             };
+
+            // 核心修復：寬鬆標題辨識
             const processRows = (rows, zoneName) => {
                 if(!rows || rows.length===0) return [];
                 let headerIdx = -1, colMap = {};
+                
+                // 掃描前 20 行找標題
                 for(let i=0; i<Math.min(rows.length,20); i++) {
-                    const rowStr = rows[i].map(c=>String(c).trim());
-                    if(rowStr.includes('代碼') && (rowStr.includes('名稱')||rowStr.includes('藥品名稱'))) {
+                    // 只要該行同時包含 "代碼" 和 "名稱" 相關字眼就算標題
+                    const rowText = rows[i].map(c=>String(c).trim()).join(' ');
+                    if(rowText.includes('代碼') && rowText.includes('名稱')) {
                         headerIdx = i;
+                        // 建立索引
                         rows[i].forEach((col, idx) => {
                             const c = String(col).trim();
                             if(c.includes('代碼')) colMap.code = idx;
@@ -327,20 +307,26 @@
                         break;
                     }
                 }
+                
                 if(headerIdx === -1) return [];
+                
                 const items = [];
                 for(let i=headerIdx+1; i<rows.length; i++) {
                     const row = rows[i];
+                    if(!colMap.code) continue;
                     const code = row[colMap.code];
-                    const name = row[colMap.name];
+                    const name = colMap.name!==undefined ? row[colMap.name] : '';
                     if(!code || !name) continue;
+
                     let lgCap=0, lgUnit='盒';
-                    if(colMap.lgCap!==undefined) { const val=parseInt(row[colMap.lgCap]); if(!isNaN(val)) lgCap=val; if(row[colMap.lgCap+1] && String(row[colMap.lgCap+1]).includes('/')) lgUnit=String(row[colMap.lgCap+1]).replace('/','').replace('x','').trim(); }
+                    if(colMap.lgCap!==undefined) { const v=parseInt(row[colMap.lgCap]); if(!isNaN(v)) lgCap=v; if(colMap.lgUnit!==undefined && row[colMap.lgUnit]) lgUnit=String(row[colMap.lgUnit]).replace('/','').replace('x','').trim(); }
                     let smCap=1, smUnit='排';
-                    if(colMap.smCap!==undefined) { const val=parseInt(row[colMap.smCap]); if(!isNaN(val)) smCap=val; if(row[colMap.smCap+1] && String(row[colMap.smCap+1]).includes('/')) smUnit=String(row[colMap.smCap+1]).replace('/','').replace('x','').trim(); }
+                    if(colMap.smCap!==undefined) { const v=parseInt(row[colMap.smCap]); if(!isNaN(v)) smCap=v; if(colMap.smUnit!==undefined && row[colMap.smUnit]) smUnit=String(row[colMap.smUnit]).replace('/','').replace('x','').trim(); }
+
                     items.push({
-                        id: `${code}_${zoneName}_${i}`, code: String(code).trim(), name: String(name).trim(), shelf: colMap.shelf!==undefined?String(row[colMap.shelf]).trim():'',
-                        zone: zoneName, units: { large: { name: lgUnit, cap: lgCap }, small: { name: smUnit, cap: smCap }, loose: { name: '顆', cap: 1 } },
+                        id: `${code}_${zoneName}_${i}`, code:String(code).trim(), name:String(name).trim(), 
+                        shelf: colMap.shelf!==undefined?String(row[colMap.shelf]).trim():'', zone: zoneName,
+                        units: { large: { name: lgUnit, cap: lgCap }, small: { name: smUnit, cap: smCap }, loose: { name: '顆', cap: 1 } },
                         inputs: { large: null, small: null, loose: null }, timestamp: null, user: null
                     });
                 }
@@ -348,21 +334,22 @@
             };
 
             const confirmImport = () => {
-                if(confirm(`確認上傳 ${importSummary.value.totalItems} 筆資料？(覆蓋現有)`)) {
-                    inventory.value = tempImportData.value;
+                if(confirm(`確認上傳 ${importSummary.value.totalItems} 筆資料？`)) {
                     isProcessing.value = true;
-                    set(dbRef(db, "inventory"), inventory.value)
-                        .then(()=>alert("上傳成功"))
-                        .catch(e=>alert("失敗:"+e.message))
-                        .finally(()=>isProcessing.value=false);
+                    set(dbRef(db,"inventory"), tempImportData.value)
+                       .then(()=>alert("上傳成功"))
+                       .catch(e=>alert(e.message))
+                       .finally(()=>{ isProcessing.value=false; tempImportData.value=[]; });
                 }
             };
-            const clearInventory = () => { if(confirm("清空藥品？")) remove(dbRef(db, "inventory")); };
-            const clearStaff = () => { if(confirm("清空人員？")) remove(dbRef(db, "staff")); };
-            const enterAdmin = () => { if(prompt("密碼：")==="8888") currentPage.value='admin'; else alert("錯誤"); };
+            
+            const clearStaff = () => { if(confirm("清空人員？")) remove(dbRef(db,"staff")); };
+            const clearInventory = () => { if(confirm("清空藥品？")) remove(dbRef(db,"inventory")); };
+            const enterAdmin = () => { if(prompt("密碼:")==="8888") currentPage.value='admin'; else alert("錯誤"); };
             const enterSystem = () => currentPage.value='inventory';
             const exitCounting = () => currentPage.value='login';
 
+            // Computeds
             const uniqueZones = computed(() => !inventory.value ? [] : Array.from(new Set(inventory.value.map(i=>i.zone))).sort());
             const filteredInventory = computed(() => {
                 if(!inventory.value) return [];
@@ -381,15 +368,16 @@
                 return (item.inputs.large||0)*item.units.large.cap + (item.inputs.small||0)*item.units.small.cap + (item.inputs.loose||0);
             };
             const uncountedCount = computed(() => filteredInventory.value.filter(i=>!isItemComplete(i)).length);
-            const progressPercent = computed(() => { const total=filteredInventory.value.length; return total===0?0:((total-uncountedCount.value)/total)*100; });
-            const currentZoneStats = computed(() => { const total=filteredInventory.value.length; const done=total-uncountedCount.value; return { total, done, percent: total===0?0:Math.round((done/total)*100) }; });
+            const progressPercent = computed(() => { const t=filteredInventory.value.length; return t===0?0:((t-uncountedCount.value)/t)*100; });
+            const currentZoneStats = computed(() => { const t=filteredInventory.value.length; const d=t-uncountedCount.value; return { total:t, done:d, percent: t===0?0:Math.round((d/t)*100) }; });
             const zoneProgress = computed(() => {
                 if(!inventory.value) return [];
                 const stats = {}; uniqueZones.value.forEach(z=>stats[z]={total:0,done:0});
-                inventory.value.forEach(item=>{ if(stats[item.zone]) { stats[item.zone].total++; if(isItemComplete(item)) stats[item.zone].done++; } });
+                inventory.value.forEach(i=>{ if(stats[i.zone]) { stats[i.zone].total++; if(isItemComplete(i)) stats[i.zone].done++; } });
                 return Object.keys(stats).map(z=>({ name:z, total:stats[z].total, done:stats[z].done, percent: stats[z].total===0?0:Math.round((stats[z].done/stats[z].total)*100) }));
             });
 
+            // 匯出
             const exportZone = (zName) => {
                 const list = inventory.value.filter(i=>i.zone===zName);
                 const data = list.map(item => {
@@ -401,7 +389,7 @@
                     if(done && details.length===0) details.push("0");
                     return { '代碼':item.code, '名稱':item.name, '櫃位':item.shelf, '盤點內容':done?details.join(' '):'未盤', '總量':done?calculateTotal(item):'', '盤點人':done?(item.user||''):'', '時間':done&&item.timestamp?new Date(item.timestamp).toLocaleString():'' };
                 });
-                const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "明細"); XLSX.writeFile(wb, `明細_${zName}.xlsx`);
+                const ws = window.XLSX.utils.json_to_sheet(data); const wb = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(wb, ws, "明細"); window.XLSX.writeFile(wb, `明細_${zName}.xlsx`);
             };
             const exportMasterPivotReport = () => {
                 const zones = uniqueZones.value; const map = {};
@@ -414,7 +402,7 @@
                     zones.forEach(z => { const v=r.totals[z]||0; row[z]=v; total+=v; });
                     row['總計'] = total; return row;
                 });
-                const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "總表"); XLSX.writeFile(wb, `全院總表.xlsx`);
+                const ws = window.XLSX.utils.json_to_sheet(data); const wb = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(wb, ws, "總表"); window.XLSX.writeFile(wb, `全院總表.xlsx`);
             };
 
             return { currentPage, currentUser, currentZone, staffList, inventory, searchQuery, filteredInventory, uncountedCount, progressPercent, uniqueZones, zoneProgress, currentZoneStats, isProcessing, isOnline, isSaving, importSummary, handleFileUpload, confirmImport, clearInventory, clearStaff, handleStaffUpload, enterSystem, exitCounting, isItemComplete, calculateTotal, setAllZero, updateQty, debouncedUpdate, exportZone, exportMasterPivotReport, enterAdmin };
