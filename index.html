@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v4.3 (匯入修復版)</title>
+    <title>藥局盤點系統 v4.4 (欄位0修正版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
@@ -93,7 +93,7 @@
     <div v-else-if="currentPage === 'login'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50">
         <div class="w-full max-w-sm">
             <h1 class="text-3xl font-bold text-blue-800 text-center mb-1">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-sm mb-8">v4.3 (匯入修復版)</p>
+            <p class="text-center text-gray-400 text-sm mb-8">v4.4 (欄位0修正版)</p>
             
             <div v-if="!isOnline" class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded shadow-sm">
                 <p class="font-bold">⚠️ 連線中斷</p>
@@ -155,7 +155,6 @@
 </div>
 
 <script type="module">
-    // 錯誤捕捉
     window.onerror = function(msg, source, lineno, colno, error) {
         document.getElementById('error-console').style.display='block';
         document.getElementById('error-console').innerHTML += `❌ ${msg}<br>`;
@@ -166,7 +165,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getDatabase, ref as dbRef, set, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-    // 您的 Firebase Config
+    // 您的 Firebase Config (已帶入您之前提供的)
     const firebaseConfig = {
       apiKey: "AIzaSyDZuNztwb9aLG1RqeDOyrj6KJrPhwBFi9M",
       authDomain: "fyh-pharmacy-inventory.firebaseapp.com",
@@ -241,7 +240,7 @@
                     .then(()=>isSaving.value=false);
             };
 
-            // 匯入邏輯 (修復版：寬鬆辨識)
+            // 匯入邏輯
             const handleStaffUpload = (e) => {
                 const file = e.target.files[0]; if(!file) return;
                 const r = new FileReader();
@@ -265,7 +264,7 @@
                 }
                 importSummary.value.totalItems = tempImportData.value.length;
                 isProcessing.value = false;
-                if(tempImportData.value.length === 0) alert("未讀取到任何藥品！請確認 Excel 標題列是否包含「代碼」與「名稱」。");
+                if(tempImportData.value.length === 0) alert("未讀取到任何藥品！請確認 CSV 標題列是否包含「代碼」與「名稱」。");
             };
 
             const getZoneName = (n) => { let s=n.replace('.csv','').replace('.xlsx','').replace('.xls',''); const m=s.match(/-\s*(.+)/); return (m&&m[1])?m[1].trim():s; };
@@ -282,18 +281,15 @@
                 });
             };
 
-            // 核心修復：寬鬆標題辨識
             const processRows = (rows, zoneName) => {
                 if(!rows || rows.length===0) return [];
                 let headerIdx = -1, colMap = {};
                 
-                // 掃描前 20 行找標題
+                // 1. 找標題
                 for(let i=0; i<Math.min(rows.length,20); i++) {
-                    // 只要該行同時包含 "代碼" 和 "名稱" 相關字眼就算標題
                     const rowText = rows[i].map(c=>String(c).trim()).join(' ');
                     if(rowText.includes('代碼') && rowText.includes('名稱')) {
                         headerIdx = i;
-                        // 建立索引
                         rows[i].forEach((col, idx) => {
                             const c = String(col).trim();
                             if(c.includes('代碼')) colMap.code = idx;
@@ -313,7 +309,10 @@
                 const items = [];
                 for(let i=headerIdx+1; i<rows.length; i++) {
                     const row = rows[i];
-                    if(!colMap.code) continue;
+                    
+                    // --- 修正重點：檢查欄位是否未定義，而非使用 !0 ---
+                    if(colMap.code === undefined) continue; 
+                    
                     const code = row[colMap.code];
                     const name = colMap.name!==undefined ? row[colMap.name] : '';
                     if(!code || !name) continue;
@@ -349,7 +348,6 @@
             const enterSystem = () => currentPage.value='inventory';
             const exitCounting = () => currentPage.value='login';
 
-            // Computeds
             const uniqueZones = computed(() => !inventory.value ? [] : Array.from(new Set(inventory.value.map(i=>i.zone))).sort());
             const filteredInventory = computed(() => {
                 if(!inventory.value) return [];
@@ -377,7 +375,6 @@
                 return Object.keys(stats).map(z=>({ name:z, total:stats[z].total, done:stats[z].done, percent: stats[z].total===0?0:Math.round((stats[z].done/stats[z].total)*100) }));
             });
 
-            // 匯出
             const exportZone = (zName) => {
                 const list = inventory.value.filter(i=>i.zone===zName);
                 const data = list.map(item => {
