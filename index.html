@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.4 (UI優化版)</title>
+    <title>藥局盤點系統 v5.5 (高對比修正版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/shim.min.js"></script>
@@ -21,18 +21,18 @@
         /* --- 核心優化：輸入框樣式 --- */
         .input-box { 
             @apply w-full h-16 rounded-xl text-center text-3xl font-extrabold outline-none transition-all p-0 shadow-sm;
-            /* 修正：輸入框維持純白，邊框預設灰色，聚焦變藍 */
-            @apply bg-white border-2 border-gray-300 text-gray-800;
+            /* 修正：強制純白背景，邊框加深，讓它在彩色底圖上"跳"出來 */
+            @apply bg-white border-2 border-gray-400 text-gray-900;
             -moz-appearance: textfield; 
         }
         
-        /* 點擊時的效果：邊框變深藍 */
+        /* 點擊時的效果：邊框變粗藍色 */
         .input-box:focus { 
-            @apply ring-4 ring-blue-200 border-blue-600 z-10; 
+            @apply ring-4 ring-blue-300 border-blue-600 z-10; 
         }
 
-        /* 有輸入數值時：文字變藍色，邊框變藍，強調已填寫 */
-        .input-filled { @apply text-blue-700 border-blue-500 bg-white; }
+        /* 有輸入數值時：文字變藍，背景維持白 */
+        .input-filled { @apply text-blue-700 border-blue-500 font-black; }
         .input-empty { @apply text-gray-300; }
         
         /* 隱藏瀏覽器預設箭頭 */
@@ -41,13 +41,16 @@
         /* 加減按鈕優化 */
         .btn-adj { 
             @apply w-12 h-16 flex items-center justify-center rounded-xl font-bold text-2xl transition-all border shadow-sm;
-            @apply bg-white border-gray-300 text-gray-500 hover:bg-gray-50 active:bg-gray-200 active:scale-95;
+            @apply bg-white border-gray-300 text-gray-600 hover:bg-gray-100 active:bg-gray-300 active:scale-95;
         }
 
-        /* 修正：欄位背景色塊 (顏色加深，讓白色輸入框更明顯) */
-        .col-lg { @apply bg-blue-200/80 border-2 border-blue-300; }   /* 大包裝底色 (深一點的藍) */
-        .col-sm { @apply bg-green-200/80 border-2 border-green-300; } /* 小包裝底色 (深一點的綠) */
-        .col-lo { @apply bg-orange-200/80 border-2 border-orange-300; } /* 零散底色 (深一點的橘) */
+        /* --- 重點修正：欄位背景色塊 (顏色加深，對比增強) --- */
+        /* 只要點到這個有顏色的區域，就能觸發輸入 */
+        .col-zone { @apply p-3 rounded-xl border-2 cursor-pointer transition-colors active:opacity-80; }
+        
+        .col-lg { @apply bg-blue-200 border-blue-300; }   /* 大包裝：明顯的藍 */
+        .col-sm { @apply bg-green-200 border-green-300; } /* 小包裝：明顯的綠 */
+        .col-lo { @apply bg-orange-200 border-orange-300; } /* 零散：明顯的橘 */
 
         .btn-act { @apply active:scale-95 transition-transform; }
         .loader { border: 3px solid #f3f3f3; border-top: 3px solid #3b82f6; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
@@ -115,7 +118,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-3xl font-extrabold text-blue-900 text-center mb-1">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-xs mb-8 tracking-widest">FIREBASE V5.4</p>
+            <p class="text-center text-gray-400 text-xs mb-8 tracking-widest">FIREBASE V5.5</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-3 rounded mb-4 text-center text-sm font-bold">連線中斷，請檢查網路</div>
 
@@ -218,7 +221,7 @@
                 <div class="grid grid-cols-3 gap-2">
                     
                     <div v-if="item.units?.lg?.cap > 0" 
-                         class="flex flex-col items-center p-2 rounded-lg col-lg cursor-pointer transition-colors"
+                         class="col-zone col-lg flex flex-col items-center"
                          @click="$event.currentTarget.querySelector('input').focus()">
                          
                         <label class="text-xs text-blue-900 mb-1 font-bold">{{ item.units.lg.name }}</label>
@@ -231,7 +234,7 @@
                     <div v-else class="flex justify-center items-center opacity-10 text-xs bg-gray-50 rounded-lg">-</div>
 
                     <div v-if="item.units?.sm?.cap > 1" 
-                         class="flex flex-col items-center p-2 rounded-lg col-sm cursor-pointer transition-colors"
+                         class="col-zone col-sm flex flex-col items-center"
                          @click="$event.currentTarget.querySelector('input').focus()">
 
                         <label class="text-xs text-green-900 mb-1 font-bold">{{ item.units.sm.name }}</label>
@@ -243,7 +246,7 @@
                     </div>
                     <div v-else class="flex justify-center items-center opacity-10 text-xs bg-gray-50 rounded-lg">-</div>
 
-                    <div class="flex flex-col items-center p-2 rounded-lg col-lo cursor-pointer transition-colors"
+                    <div class="col-zone col-lo flex flex-col items-center"
                          @click="$event.currentTarget.querySelector('input').focus()">
 
                         <label class="text-xs text-orange-900 mb-1 font-bold">顆/支</label>
