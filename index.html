@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.7 (版面優化版)</title>
+    <title>藥局盤點系統 v5.8 (顯示盤點人員)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/shim.min.js"></script>
@@ -98,7 +98,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-3xl font-extrabold text-blue-900 text-center mb-1">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-xs mb-8 tracking-widest">FIREBASE V5.7</p>
+            <p class="text-center text-gray-400 text-xs mb-8 tracking-widest">FIREBASE V5.8</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-3 rounded mb-4 text-center text-sm font-bold">連線中斷，請檢查網路</div>
 
@@ -191,9 +191,16 @@
                             <span v-if="item.units?.sm?.cap > 1" class="text-[10px] px-2 py-1 bg-green-100 border border-green-200 rounded text-green-700 font-bold">1{{ item.units.sm.name }}={{ item.units.sm.cap }}</span>
                         </div>
                     </div>
+                    
                     <div class="text-right min-w-[70px] flex flex-col items-end">
-                        <div v-if="isDone(item)" class="text-3xl font-bold text-green-600 leading-none">{{ calcTotal(item) }}</div>
+                        <div v-if="isDone(item)" class="flex flex-col items-end">
+                            <div class="text-3xl font-bold text-green-600 leading-none">{{ calcTotal(item) }}</div>
+                            <div class="text-[10px] text-gray-400 font-bold mt-1 bg-gray-50 px-1 rounded border border-gray-100">
+                                {{ item.user || '未知' }}
+                            </div>
+                        </div>
                         <div v-else class="text-lg font-bold text-red-400 animate-pulse bg-red-50 px-2 py-1 rounded">未盤</div>
+                        
                         <button v-if="!isDone(item)" @click="setZero(item)" class="text-xs mt-2 bg-gray-500 text-white px-3 py-1.5 rounded shadow hover:bg-gray-600 btn-act w-full">🗑️ 無庫存</button>
                     </div>
                 </div>
@@ -306,6 +313,7 @@
                         else item.units.sm.name = smN;
                         
                         if (item.done === undefined) item.done = false;
+                        if (!item.user) item.user = ''; // 確保 user 欄位存在
                         if (!item.code) item.code = '???';
                         if (!item.name) item.name = '未知藥品';
                         return item;
