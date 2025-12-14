@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.5 (高對比修正版)</title>
+    <title>藥局盤點系統 v5.5 (高對比優化版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/shim.min.js"></script>
@@ -21,7 +21,7 @@
         /* --- 核心優化：輸入框樣式 --- */
         .input-box { 
             @apply w-full h-16 rounded-xl text-center text-3xl font-extrabold outline-none transition-all p-0 shadow-sm;
-            /* 修正：強制純白背景，邊框加深，讓它在彩色底圖上"跳"出來 */
+            /* 修正：強制純白背景，加上深灰色邊框，讓它在彩色底圖上"跳"出來 */
             @apply bg-white border-2 border-gray-400 text-gray-900;
             -moz-appearance: textfield; 
         }
@@ -31,7 +31,7 @@
             @apply ring-4 ring-blue-300 border-blue-600 z-10; 
         }
 
-        /* 有輸入數值時：文字變藍，背景維持白 */
+        /* 有輸入數值時：文字變藍，字體加重 */
         .input-filled { @apply text-blue-700 border-blue-500 font-black; }
         .input-empty { @apply text-gray-300; }
         
@@ -45,7 +45,7 @@
         }
 
         /* --- 重點修正：欄位背景色塊 (顏色加深，對比增強) --- */
-        /* 只要點到這個有顏色的區域，就能觸發輸入 */
+        /* col-zone: 設定為可點擊，並增加內距讓手指容易點中 */
         .col-zone { @apply p-3 rounded-xl border-2 cursor-pointer transition-colors active:opacity-80; }
         
         .col-lg { @apply bg-blue-200 border-blue-300; }   /* 大包裝：明顯的藍 */
