@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.6 (樣式修復版)</title>
+    <title>藥局盤點系統 v5.7 (版面優化版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/shim.min.js"></script>
@@ -98,7 +98,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-3xl font-extrabold text-blue-900 text-center mb-1">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-xs mb-8 tracking-widest">FIREBASE V5.6</p>
+            <p class="text-center text-gray-400 text-xs mb-8 tracking-widest">FIREBASE V5.7</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-3 rounded mb-4 text-center text-sm font-bold">連線中斷，請檢查網路</div>
 
@@ -201,58 +201,40 @@
                 <div class="grid grid-cols-3 gap-2">
                     
                     <div v-if="item.units?.lg?.cap > 0" 
-                         class="p-2 rounded-xl border-2 border-blue-200 bg-blue-100 flex flex-col items-center"
+                         class="p-1 rounded-xl border-2 border-blue-200 bg-blue-50 flex flex-col items-center"
                          @click="$event.currentTarget.querySelector('input').focus()">
                         
                         <label class="text-xs text-blue-900 mb-1 font-bold">{{ item.units.lg.name }}</label>
-                        <div class="flex w-full items-center gap-1">
-                            <button @click.stop="adj(item, 'lg', -1)" class="w-10 h-16 flex items-center justify-center rounded-xl font-bold text-2xl bg-white border-2 border-gray-300 text-gray-600 shadow-sm active:bg-gray-200 active:scale-95 transition-all">-</button>
-                            
-                            <input type="number" inputmode="numeric" pattern="[0-9]*" 
-                                   v-model.number="item.inputs.lg" @input="save(item)" @focus="$event.target.select()" 
-                                   class="w-full h-16 rounded-xl text-center text-3xl font-extrabold outline-none shadow-inner transition-colors p-0 border-4"
-                                   :class="item.inputs.lg !== 0 ? 'bg-blue-50 border-blue-600 text-blue-800' : 'bg-gray-100 border-gray-400 text-gray-900 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-200'"
-                                   placeholder="0">
-                                   
-                            <button @click.stop="adj(item, 'lg', 1)" class="w-10 h-16 flex items-center justify-center rounded-xl font-bold text-2xl bg-white border-2 border-gray-300 text-gray-600 shadow-sm active:bg-gray-200 active:scale-95 transition-all">+</button>
-                        </div>
+                        <input type="number" inputmode="numeric" pattern="[0-9]*" 
+                               v-model.number="item.inputs.lg" @input="save(item)" @focus="$event.target.select()" 
+                               class="w-full h-14 rounded-lg text-center text-2xl font-black outline-none shadow-inner transition-colors p-0 border-4"
+                               :class="item.inputs.lg !== 0 ? 'bg-blue-100 border-blue-600 text-blue-800' : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'"
+                               placeholder="0">
                     </div>
                     <div v-else class="flex justify-center items-center opacity-10 text-xs bg-gray-50 rounded-lg">-</div>
 
                     <div v-if="item.units?.sm?.cap > 1" 
-                         class="p-2 rounded-xl border-2 border-green-200 bg-green-100 flex flex-col items-center"
+                         class="p-1 rounded-xl border-2 border-green-200 bg-green-50 flex flex-col items-center"
                          @click="$event.currentTarget.querySelector('input').focus()">
 
                         <label class="text-xs text-green-900 mb-1 font-bold">{{ item.units.sm.name }}</label>
-                        <div class="flex w-full items-center gap-1">
-                            <button @click.stop="adj(item, 'sm', -1)" class="w-10 h-16 flex items-center justify-center rounded-xl font-bold text-2xl bg-white border-2 border-gray-300 text-gray-600 shadow-sm active:bg-gray-200 active:scale-95 transition-all">-</button>
-                            
-                            <input type="number" inputmode="numeric" pattern="[0-9]*" 
-                                   v-model.number="item.inputs.sm" @input="save(item)" @focus="$event.target.select()" 
-                                   class="w-full h-16 rounded-xl text-center text-3xl font-extrabold outline-none shadow-inner transition-colors p-0 border-4"
-                                   :class="item.inputs.sm !== 0 ? 'bg-green-50 border-green-600 text-green-800' : 'bg-gray-100 border-gray-400 text-gray-900 focus:bg-white focus:border-green-500 focus:ring-4 focus:ring-green-200'"
-                                   placeholder="0">
-                                   
-                            <button @click.stop="adj(item, 'sm', 1)" class="w-10 h-16 flex items-center justify-center rounded-xl font-bold text-2xl bg-white border-2 border-gray-300 text-gray-600 shadow-sm active:bg-gray-200 active:scale-95 transition-all">+</button>
-                        </div>
+                        <input type="number" inputmode="numeric" pattern="[0-9]*" 
+                               v-model.number="item.inputs.sm" @input="save(item)" @focus="$event.target.select()" 
+                               class="w-full h-14 rounded-lg text-center text-xl font-black outline-none shadow-inner transition-colors p-0 border-4"
+                               :class="item.inputs.sm !== 0 ? 'bg-green-100 border-green-600 text-green-800' : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'"
+                               placeholder="0">
                     </div>
                     <div v-else class="flex justify-center items-center opacity-10 text-xs bg-gray-50 rounded-lg">-</div>
 
-                    <div class="p-2 rounded-xl border-2 border-orange-200 bg-orange-100 flex flex-col items-center"
+                    <div class="p-1 rounded-xl border-2 border-orange-200 bg-orange-50 flex flex-col items-center"
                          @click="$event.currentTarget.querySelector('input').focus()">
 
                         <label class="text-xs text-orange-900 mb-1 font-bold">顆/支</label>
-                        <div class="flex w-full items-center gap-1">
-                            <button @click.stop="adj(item, 'lo', -1)" class="w-10 h-16 flex items-center justify-center rounded-xl font-bold text-2xl bg-white border-2 border-gray-300 text-gray-600 shadow-sm active:bg-gray-200 active:scale-95 transition-all">-</button>
-                            
-                            <input type="number" inputmode="numeric" pattern="[0-9]*" 
-                                   v-model.number="item.inputs.lo" @input="save(item)" @focus="$event.target.select()" 
-                                   class="w-full h-16 rounded-xl text-center text-3xl font-extrabold outline-none shadow-inner transition-colors p-0 border-4"
-                                   :class="item.inputs.lo !== 0 ? 'bg-orange-50 border-orange-600 text-orange-800' : 'bg-gray-100 border-gray-400 text-gray-900 focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-200'"
-                                   placeholder="0">
-                                   
-                            <button @click.stop="adj(item, 'lo', 1)" class="w-10 h-16 flex items-center justify-center rounded-xl font-bold text-2xl bg-white border-2 border-gray-300 text-gray-600 shadow-sm active:bg-gray-200 active:scale-95 transition-all">+</button>
-                        </div>
+                        <input type="number" inputmode="numeric" pattern="[0-9]*" 
+                               v-model.number="item.inputs.lo" @input="save(item)" @focus="$event.target.select()" 
+                               class="w-full h-14 rounded-lg text-center text-xl font-black outline-none shadow-inner transition-colors p-0 border-4"
+                               :class="item.inputs.lo !== 0 ? 'bg-orange-100 border-orange-600 text-orange-800' : 'bg-white border-gray-300 text-gray-900 focus:border-orange-500'"
+                               placeholder="0">
                     </div>
                 </div>
 
@@ -314,7 +296,6 @@
                         
                         let lgN = item.units.lg?.name || '盒';
                         let smN = item.units.sm?.name || '排';
-                        // 防呆修正：若單位名稱為數字，強制轉為預設
                         if (!isNaN(parseFloat(lgN)) || lgN.length > 5) lgN = '盒';
                         if (!isNaN(parseFloat(smN)) || smN.length > 5) smN = '支';
 
