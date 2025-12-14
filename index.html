@@ -18,32 +18,34 @@
             overscroll-behavior-y: none;
         }
         
-        /* --- 核心優化：輸入框樣式 --- */
-        .input-box { 
-            @apply w-full h-16 rounded-xl text-center text-3xl font-extrabold outline-none transition-all p-0 shadow-sm;
-            /* 修正：強制純白背景，加上深灰色邊框，讓它在彩色底圖上"跳"出來 */
-            @apply bg-white border-2 border-gray-400 text-gray-900;
-            -moz-appearance: textfield; 
-        }
+        /* --- 核心優化：輸入框樣式 (修正版) --- */
+    .input-box { 
+        @apply w-full h-16 rounded-xl text-center text-3xl font-extrabold outline-none transition-all p-0 shadow-inner;
         
-        /* 點擊時的效果：邊框變粗藍色 */
-        .input-box:focus { 
-            @apply ring-4 ring-blue-300 border-blue-600 z-10; 
-        }
+        /* 🔴 修改重點 1: 背景改為淺灰 (gray-100)，與卡片白色區隔 */
+        /* 🔴 修改重點 2: 邊框加粗 (border-4) 且顏色加深 (gray-400) */
+        @apply bg-gray-100 border-4 border-gray-400 text-gray-900;
+        
+        -moz-appearance: textfield; 
+    }
+    
+    /* 點擊時的效果：背景變回全白，邊框變深藍 */
+    .input-box:focus { 
+        @apply bg-white ring-4 ring-blue-200 border-blue-600 z-10; 
+    }
 
-        /* 有輸入數值時：文字變藍，字體加重 */
-        .input-filled { @apply text-blue-700 border-blue-500 font-black; }
-        .input-empty { @apply text-gray-300; }
-        
-        /* 隱藏瀏覽器預設箭頭 */
-        .input-box::-webkit-outer-spin-button, .input-box::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-        
-        /* 加減按鈕優化 */
-        .btn-adj { 
-            @apply w-12 h-16 flex items-center justify-center rounded-xl font-bold text-2xl transition-all border shadow-sm;
-            @apply bg-white border-gray-300 text-gray-600 hover:bg-gray-100 active:bg-gray-300 active:scale-95;
-        }
-
+    /* 有輸入數值時：背景保持微灰，文字變藍 */
+    .input-filled { @apply text-blue-800 border-blue-500 bg-blue-50; }
+    .input-empty { @apply text-gray-400; }
+    
+    /* 隱藏瀏覽器預設箭頭 */
+    .input-box::-webkit-outer-spin-button, .input-box::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    
+    /* 加減按鈕優化 (配合輸入框加深邊框) */
+    .btn-adj { 
+        @apply w-12 h-16 flex items-center justify-center rounded-xl font-bold text-2xl transition-all border-2 shadow-sm;
+        @apply bg-white border-gray-300 text-gray-600 hover:bg-gray-100 active:bg-gray-300 active:scale-95;
+    }
         /* --- 重點修正：欄位背景色塊 (顏色加深，對比增強) --- */
         /* col-zone: 設定為可點擊，並增加內距讓手指容易點中 */
         .col-zone { @apply p-3 rounded-xl border-2 cursor-pointer transition-colors active:opacity-80; }
@@ -561,3 +563,4 @@
 </script>
 </body>
 </html>
+
