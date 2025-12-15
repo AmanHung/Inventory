@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.9 (單位對應優化版)</title>
+    <title>藥局盤點系統 v5.10 (單位精準對應版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/shim.min.js"></script>
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/shim.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     
     <style>
         /* UI 基礎設定 */
@@ -18,27 +18,17 @@
             overscroll-behavior-y: none;
         }
         
-        /* 動畫與輔助類別 */
         .btn-act { transition: transform 0.1s; }
         .btn-act:active { transform: scale(0.95); }
-        
         .loader { border: 3px solid #f3f3f3; border-top: 3px solid #3b82f6; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        
         .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
         .dot-green { background: #22c55e; box-shadow: 0 0 4px #22c55e; }
         .dot-red { background: #ef4444; }
         .custom-scroll { -webkit-overflow-scrolling: touch; }
 
-        /* 隱藏數字輸入框的箭頭 */
-        input::-webkit-outer-spin-button,
-        input::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-        }
-        input[type=number] {
-            -moz-appearance: textfield;
-        }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
     </style>
 </head>
 <body>
@@ -64,6 +54,7 @@
 
         <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 mb-6">
             <h3 class="font-bold text-gray-700 mb-2">2. 更新盤點表</h3>
+            <div class="text-xs text-gray-400 mb-2">支援欄位：代碼, 名稱, 儲位, (量/大包裝), 大包裝單位, (量/小包裝), 小包裝單位</div>
             <input type="file" ref="fileInv" multiple accept=".csv,.xlsx,.xls" class="hidden" @change="uploadInventory">
             <button @click="$refs.fileInv.click()" class="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-500 hover:text-blue-500 transition btn-act">選擇盤點表 (支援多檔)</button>
             <div v-if="isUploading" class="mt-2 text-center text-blue-600 text-sm flex justify-center items-center gap-2"><div class="loader"></div> 處理中...</div>
@@ -98,7 +89,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-3xl font-extrabold text-blue-900 text-center mb-1">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-xs mb-8 tracking-widest">FIREBASE V5.9</p>
+            <p class="text-center text-gray-400 text-xs mb-8 tracking-widest">FIREBASE V5.10</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-3 rounded mb-4 text-center text-sm font-bold">連線中斷，請檢查網路</div>
 
@@ -301,10 +292,10 @@
                         if (!item.inputs) item.inputs = { lg: 0, sm: 0, lo: 0 };
                         if (!item.units) item.units = {};
                         
-                        // 確保 units 結構完整
+                        // Default Fallbacks
                         if (!item.units.lg) item.units.lg = { cap: 0, name: '盒' };
                         if (!item.units.sm) item.units.sm = { cap: 0, name: '排' };
-                        if (!item.units.lo) item.units.lo = { name: '顆/支' }; // 新增散裝單位
+                        if (!item.units.lo) item.units.lo = { name: '顆/支' };
                         
                         if (item.done === undefined) item.done = false;
                         if (!item.user) item.user = '';
@@ -384,12 +375,6 @@
                 }, 500);
             };
 
-            const adj = (item, type, val) => {
-                item.inputs[type] += val;
-                if (item.inputs[type] < 0) item.inputs[type] = 0;
-                save(item);
-            };
-
             const setZero = (item) => {
                 item.inputs.lg = 0; item.inputs.sm = 0; item.inputs.lo = 0;
                 save(item);
@@ -449,35 +434,36 @@
                     r.onload = (e) => {
                         try {
                             const wb = XLSX.read(e.target.result, { type: 'binary' });
-                            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1, defval:'' });
+                            const sheet = wb.Sheets[wb.SheetNames[0]];
+                            const rows = XLSX.utils.sheet_to_json(sheet, { header:1, defval:'' });
+                            
+                            // Find Header Row: Look for "Code" or "代碼"
                             let headIdx = -1;
                             for(let r=0; r<Math.min(rows.length, 20); r++) {
                                 const str = rows[r].join(' ');
-                                if (str.includes('代碼') || str.includes('Code')) { headIdx = r; break; }
+                                if (str.includes('代碼') || str.toLowerCase().includes('code')) { headIdx = r; break; }
                             }
                             if (headIdx === -1) headIdx = 0;
+                            
+                            // Clean Header Helper: Remove (), /, spaces for loose matching
+                            const clean = (s) => String(s).replace(/[\(\)\/\s]/g, '');
                             const header = rows[headIdx].map(x => String(x).trim());
                             
-                            // 修正：更精準的對應邏輯
                             const idxMap = {
-                                code: header.findIndex(x => x.includes('代碼') || x.includes('Code')),
-                                name: header.findIndex(x => x.includes('名稱') || x.includes('Name')),
+                                code: header.findIndex(x => x.includes('代碼') || x.toLowerCase().includes('code')),
+                                name: header.findIndex(x => x.includes('名稱') || x.toLowerCase().includes('name')),
                                 shelf: header.findIndex(x => x.includes('儲位') || x.includes('門牌')),
                                 
-                                // 大包裝
-                                lgCap: header.findIndex(x => x.includes('大包裝') && x.includes('量')),
-                                lgUnit: header.findIndex(x => x.includes('大包裝') && (x.includes('單位')||x.includes('/'))),
+                                // Robust Matching for Units
+                                lgCap: header.findIndex(x => { const c = clean(x); return c.includes('大包裝') && c.includes('量'); }),
+                                lgUnit: header.findIndex(x => { const c = clean(x); return c.includes('大包裝') && (c.includes('單位') || c.includes('unit')); }),
                                 
-                                // 小包裝
-                                smCap: header.findIndex(x => x.includes('小包裝') && x.includes('量')),
-                                smUnit: header.findIndex(x => x.includes('小包裝') && (x.includes('單位')||x.includes('/'))),
-                                
-                                // 散裝 (New)
-                                loUnit: header.findIndex(x => x.includes('散裝') && x.includes('單位'))
+                                smCap: header.findIndex(x => { const c = clean(x); return c.includes('小包裝') && c.includes('量'); }),
+                                smUnit: header.findIndex(x => { const c = clean(x); return c.includes('小包裝') && (c.includes('單位') || c.includes('unit')); }),
                             };
                             
+                            // Fallback if matching failed (assuming standard order)
                             if (idxMap.code === -1) {
-                                // Fallback
                                 idxMap.code=0; idxMap.name=1; idxMap.shelf=3;
                                 idxMap.lgCap=4; idxMap.lgUnit=5;
                                 idxMap.smCap=6; idxMap.smUnit=7;
@@ -492,23 +478,28 @@
                                 let lgCap = parseInt(row[idxMap.lgCap]) || 0;
                                 let lgName = row[idxMap.lgUnit] ? String(row[idxMap.lgUnit]).replace(/[\/x]/g,'').trim() : '盒';
                                 
-                                let smCap = parseInt(row[idxMap.smCap]) || 1;
-                                // 修正：小包裝單位的智慧預設值
-                                let smRaw = row[idxMap.smUnit] ? String(row[idxMap.smUnit]).replace(/[\/x]/g,'').trim() : '';
-                                let smName = smRaw;
-                                if (!smName) smName = (smCap === 1 ? '支' : '排');
+                                let smCap = parseInt(row[idxMap.smCap]);
+                                if (isNaN(smCap)) smCap = 0; // Default to 0 if NaN so we can detect "Empty" vs "1"
+                                
+                                let smName = row[idxMap.smUnit] ? String(row[idxMap.smUnit]).replace(/[\/x]/g,'').trim() : '';
+
+                                // Smart Unit Mapping Logic:
+                                // If smCap is 0 or 1, it means there is no "Intermediate" packaging.
+                                // The "Small Unit" column in CSV effectively describes the "Loose Unit".
+                                let loName = '顆/支'; // Default
+                                
+                                if (smCap <= 1) {
+                                    // Case: No real small pack. 
+                                    // If CSV has a unit name (e.g., '支'), assume that is the Loose Unit.
+                                    if (smName) loName = smName;
+                                    smCap = 0; // Disable small input
+                                    smName = ''; // Clear small name
+                                } else {
+                                    // Case: Real small pack exists (e.g. 10 pills/strip)
+                                    if (!smName) smName = '排';
+                                }
 
                                 if (!isNaN(parseFloat(lgName)) || lgName.length > 5) lgName = '盒';
-                                if (!isNaN(parseFloat(smName)) || smName.length > 5) smName = '支';
-
-                                // 散裝單位邏輯
-                                let loName = '顆/支';
-                                if (idxMap.loUnit !== -1 && row[idxMap.loUnit]) {
-                                    loName = String(row[idxMap.loUnit]).trim();
-                                } else if (smCap === 1 && smRaw) {
-                                    // 如果小包裝容量是1，且有定義單位，則該單位其實就是散裝單位
-                                    loName = smRaw;
-                                }
 
                                 parsed.push({
                                     id: `${zone}_${code}_${r}`,
@@ -526,7 +517,11 @@
                                 });
                             }
                             resolve(parsed);
-                        } catch(err) { resolve([]); }
+                        } catch(err) { 
+                            console.error(err);
+                            alert("讀取失敗，請確認檔案格式");
+                            resolve([]); 
+                        }
                     };
                     r.readAsBinaryString(file);
                 });
@@ -535,7 +530,7 @@
             const exportZone = (z) => {
                 const data = inventory.value.filter(x => x.zone === z).map(x => ({
                     '代碼': x.code, '名稱': x.name, '儲位': x.shelf,
-                    '盤點量': isDone(x) ? `${x.inputs.lg}${x.units?.lg?.name} ${x.inputs.sm}${x.units?.sm?.name} ${x.inputs.lo.name || '顆'}` : '未盤',
+                    '盤點量': isDone(x) ? `${x.inputs.lg}${x.units?.lg?.name} ${x.inputs.sm}${x.units?.sm?.name} ${x.inputs.lo.name}`.trim() : '未盤',
                     '總量': isDone(x) ? calcTotal(x) : 0, '盤點人': x.user || '',
                     '時間': x.time ? new Date(x.time).toLocaleString() : ''
                 }));
@@ -566,7 +561,7 @@
                 selUser, selZone, keyword,
                 staffList, dbCount, staffCount, zoneList, displayList, currentProgress, zoneStats,
                 startInv, enterAdmin, resetDatabase, uploadStaff, uploadInventory,
-                adj, save, setZero, isDone, calcTotal, exportZone, exportTotal
+                save, setZero, isDone, calcTotal, exportZone, exportTotal
             };
         }
     }).mount('#app');
