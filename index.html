@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.12 (大字體護眼版)</title>
+    <title>藥局盤點系統 v5.13 (現場補單功能)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/shim.min.js"></script>
@@ -29,6 +29,9 @@
 
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; }
+        
+        /* Modal 背景模糊效果 */
+        .modal-backdrop { background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(2px); }
     </style>
 </head>
 <body>
@@ -90,7 +93,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-4xl font-extrabold text-blue-900 text-center mb-2">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.12</p>
+            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.13</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-4 rounded-xl mb-6 text-center text-base font-bold">連線中斷，請檢查網路</div>
 
@@ -151,14 +154,17 @@
                 <div class="bg-green-400 h-full transition-all duration-300" :style="{width: currentProgress.pct+'%'}"></div>
             </div>
             
-            <div class="mt-3 relative">
-                <input v-model="keyword" type="text" placeholder="搜尋藥名、代碼..." class="w-full pl-10 pr-10 py-3 rounded-lg text-gray-800 text-base outline-none shadow-inner">
-                <div class="absolute left-3 top-3.5 text-gray-400 pointer-events-none">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
+            <div class="mt-3 relative flex gap-2">
+                <div class="relative flex-1">
+                    <input v-model="keyword" type="text" placeholder="搜尋藥名、代碼..." class="w-full pl-10 pr-10 py-3 rounded-lg text-gray-800 text-base outline-none shadow-inner">
+                    <div class="absolute left-3 top-3.5 text-gray-400 pointer-events-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </div>
+                    <button v-if="keyword" @click="keyword=''" class="absolute right-3 top-3 text-gray-400 hover:text-red-500 text-lg font-bold">✕</button>
                 </div>
-                <button v-if="keyword" @click="keyword=''" class="absolute right-3 top-3 text-gray-400 hover:text-red-500 text-lg font-bold">✕</button>
+                <button @click="openAddModal" class="bg-green-500 hover:bg-green-600 text-white font-bold px-4 rounded-lg shadow btn-act text-2xl flex items-center justify-center">＋</button>
             </div>
         </div>
 
@@ -166,6 +172,7 @@
             <div v-if="displayList.length === 0" class="flex flex-col items-center justify-center mt-20 text-gray-400">
                 <div class="text-5xl mb-3">📭</div>
                 <p class="text-lg">找不到符合的藥品</p>
+                <button @click="openAddModal" class="mt-4 text-blue-600 underline">新增藥品?</button>
             </div>
 
             <div v-for="item in displayList" :key="item.id" class="bg-white rounded-2xl shadow-sm mb-4 p-4 border-l-[8px] transition-all duration-300" 
@@ -174,12 +181,10 @@
                 <div class="flex justify-between items-start mb-4">
                     <div class="flex-1 mr-2">
                         <div class="font-extrabold text-gray-900 text-2xl leading-tight mb-1">{{ item.name }}</div>
-                        
                         <div class="text-sm text-gray-600 font-mono mt-1 flex items-center flex-wrap gap-2">
                             {{ item.code }} 
                             <span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-bold">{{ item.shelf }}</span>
                         </div>
-                        
                         <div class="mt-3 flex flex-wrap gap-2">
                             <span v-if="item.units?.lg?.cap > 0" class="text-sm px-2 py-1 bg-blue-100 border border-blue-200 rounded text-blue-800 font-bold">1{{ item.units.lg.name }}={{ item.units.lg.cap }}</span>
                             <span v-if="item.units?.sm?.cap > 1" class="text-sm px-2 py-1 bg-green-100 border border-green-200 rounded text-green-800 font-bold">1{{ item.units.sm.name }}={{ item.units.sm.cap }}</span>
@@ -194,7 +199,6 @@
                             </div>
                         </div>
                         <div v-else class="text-xl font-bold text-red-400 animate-pulse bg-red-50 px-3 py-1 rounded">未盤</div>
-                        
                         <button v-if="!isDone(item)" @click="setZero(item)" class="text-sm mt-3 bg-gray-500 text-white px-4 py-2 rounded-lg shadow hover:bg-gray-600 btn-act w-full">🗑️ 無庫存</button>
                     </div>
                 </div>
@@ -204,7 +208,6 @@
                     <div v-if="item.units?.lg?.cap > 0" 
                          class="p-1 rounded-xl border-2 border-blue-200 bg-blue-50 flex flex-col items-center"
                          @click="$event.currentTarget.querySelector('input').focus()">
-                        
                         <label class="text-base text-blue-900 mb-1 font-bold">{{ item.units.lg.name }}</label>
                         <input type="number" inputmode="numeric" pattern="[0-9]*" 
                                v-model.number="item.inputs.lg" @input="save(item)" @focus="$event.target.select()" 
@@ -217,7 +220,6 @@
                     <div v-if="item.units?.sm?.cap > 1" 
                          class="p-1 rounded-xl border-2 border-green-200 bg-green-50 flex flex-col items-center"
                          @click="$event.currentTarget.querySelector('input').focus()">
-
                         <label class="text-base text-green-900 mb-1 font-bold">{{ item.units.sm.name }}</label>
                         <input type="number" inputmode="numeric" pattern="[0-9]*" 
                                v-model.number="item.inputs.sm" @input="save(item)" @focus="$event.target.select()" 
@@ -229,7 +231,6 @@
 
                     <div class="p-1 rounded-xl border-2 border-orange-200 bg-orange-50 flex flex-col items-center"
                          @click="$event.currentTarget.querySelector('input').focus()">
-
                         <label class="text-base text-orange-900 mb-1 font-bold">{{ item.units.lo?.name || '顆/支' }}</label>
                         <input type="number" inputmode="numeric" pattern="[0-9]*" 
                                v-model.number="item.inputs.lo" @input="save(item)" @focus="$event.target.select()" 
@@ -242,6 +243,39 @@
             </div>
         </div>
     </div>
+
+    <div v-if="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop" @click.self="showAddModal=false">
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-bounce-in">
+            <div class="bg-green-600 p-4 text-white font-bold text-xl flex justify-between items-center">
+                <span>➕ 現場補單</span>
+                <button @click="showAddModal=false" class="text-white hover:text-red-200">✕</button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-gray-700 font-bold mb-1">藥品代碼 <span class="text-red-500">*</span></label>
+                    <input v-model="newItem.code" type="text" class="w-full p-3 border-2 border-gray-300 rounded-lg text-lg focus:border-green-500 outline-none" placeholder="例如: XYZ123">
+                </div>
+                <div>
+                    <label class="block text-gray-700 font-bold mb-1">藥品名稱 <span class="text-red-500">*</span></label>
+                    <input v-model="newItem.name" type="text" class="w-full p-3 border-2 border-gray-300 rounded-lg text-lg focus:border-green-500 outline-none" placeholder="例如: Panadol">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg">
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">大包裝量 (盒)</label>
+                        <input v-model.number="newItem.lgCap" type="number" class="w-full p-2 border rounded text-center">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">小包裝量 (排)</label>
+                        <input v-model.number="newItem.smCap" type="number" class="w-full p-2 border rounded text-center">
+                    </div>
+                </div>
+
+                <button @click="confirmAdd" class="w-full bg-green-600 text-white font-bold py-4 rounded-xl text-xl shadow-lg hover:bg-green-700 btn-act">確認新增</button>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <script type="module">
@@ -281,6 +315,12 @@
             const selUser = ref('');
             const selZone = ref('');
             const keyword = ref('');
+            
+            // Add Modal State
+            const showAddModal = ref(false);
+            const newItem = ref({
+                code: '', name: '', lgCap: 0, smCap: 0
+            });
 
             onMounted(() => {
                 onValue(dbRef(db, ".info/connected"), s => isOnline.value = s.val());
@@ -295,7 +335,6 @@
                         if (!item.inputs) item.inputs = { lg: 0, sm: 0, lo: 0 };
                         if (!item.units) item.units = {};
                         
-                        // Default Fallbacks
                         if (!item.units.lg) item.units.lg = { cap: 0, name: '盒' };
                         if (!item.units.sm) item.units.sm = { cap: 0, name: '排' };
                         if (!item.units.lo) item.units.lo = { name: '顆/支' };
@@ -391,6 +430,43 @@
                 }
             };
 
+            // Add Item Logic
+            const openAddModal = () => {
+                newItem.value = { code: '', name: '', lgCap: 0, smCap: 0 };
+                showAddModal.value = true;
+            };
+
+            const confirmAdd = () => {
+                if (!newItem.value.code || !newItem.value.name) {
+                    alert("請填寫代碼與名稱"); return;
+                }
+                const newIdx = inventory.value.length;
+                const itemData = {
+                    id: `${selZone.value}_${newItem.value.code}_MANUAL`,
+                    code: newItem.value.code,
+                    name: newItem.value.name,
+                    zone: selZone.value,
+                    shelf: '手動',
+                    units: {
+                        lg: { cap: newItem.value.lgCap, name: '盒' },
+                        sm: { cap: newItem.value.smCap, name: '排' },
+                        lo: { name: '顆/支' }
+                    },
+                    inputs: { lg: 0, sm: 0, lo: 0 },
+                    done: false,
+                    user: selUser.value,
+                    time: new Date().toISOString()
+                };
+                
+                // Save to Firebase
+                update(dbRef(db, `inventory/${newIdx}`), itemData)
+                    .then(() => {
+                        alert("新增成功！");
+                        showAddModal.value = false;
+                        keyword.value = newItem.value.code; // Auto search
+                    });
+            };
+
             const uploadStaff = (e) => {
                 const f = e.target.files[0];
                 if (!f) return;
@@ -440,7 +516,6 @@
                             const sheet = wb.Sheets[wb.SheetNames[0]];
                             const rows = XLSX.utils.sheet_to_json(sheet, { header:1, defval:'' });
                             
-                            // Find Header Row
                             let headIdx = -1;
                             for(let r=0; r<Math.min(rows.length, 20); r++) {
                                 const str = rows[r].join(' ');
@@ -448,7 +523,6 @@
                             }
                             if (headIdx === -1) headIdx = 0;
                             
-                            // 關鍵修正：暴力清洗表頭 (移除括號、斜線、空格)
                             const clean = (s) => String(s).replace(/[\(\)\/\s]/g, '');
                             const header = rows[headIdx].map(x => String(x).trim());
                             
@@ -456,11 +530,8 @@
                                 code: header.findIndex(x => x.includes('代碼') || x.toLowerCase().includes('code')),
                                 name: header.findIndex(x => x.includes('名稱') || x.toLowerCase().includes('name')),
                                 shelf: header.findIndex(x => x.includes('儲位') || x.includes('門牌')),
-                                
-                                // 使用 clean 後的字串進行比對，確保能抓到 "量大包裝"
                                 lgCap: header.findIndex(x => { const c = clean(x); return c.includes('大包裝') && c.includes('量'); }),
                                 lgUnit: header.findIndex(x => { const c = clean(x); return c.includes('大包裝') && (c.includes('單位') || c.includes('unit')); }),
-                                
                                 smCap: header.findIndex(x => { const c = clean(x); return c.includes('小包裝') && c.includes('量'); }),
                                 smUnit: header.findIndex(x => { const c = clean(x); return c.includes('小包裝') && (c.includes('單位') || c.includes('unit')); }),
                             };
@@ -479,25 +550,17 @@
                                 
                                 let lgCap = parseInt(row[idxMap.lgCap]) || 0;
                                 let lgName = row[idxMap.lgUnit] ? String(row[idxMap.lgUnit]).replace(/[\/x]/g,'').trim() : '盒';
-                                
                                 let smCap = parseInt(row[idxMap.smCap]);
                                 if (isNaN(smCap)) smCap = 0; 
-                                
                                 let smName = row[idxMap.smUnit] ? String(row[idxMap.smUnit]).replace(/[\/x]/g,'').trim() : '';
-
-                                // 關鍵邏輯：若小包裝容量 <= 1，代表沒有中間層級，小包裝單位其實就是散裝單位
-                                let loName = '顆/支'; // 預設值
-                                
+                                let loName = '顆/支'; 
                                 if (smCap <= 1) {
-                                    // 沒有中間包裝
-                                    if (smName) loName = smName; // 拿小包裝單位來當散裝單位
-                                    smCap = 0; // 隱藏小包裝輸入框
+                                    if (smName) loName = smName; 
+                                    smCap = 0; 
                                     smName = ''; 
                                 } else {
-                                    // 有中間包裝 (例如 1盒=10排)
                                     if (!smName) smName = '排';
                                 }
-
                                 if (!isNaN(parseFloat(lgName)) || lgName.length > 5) lgName = '盒';
 
                                 parsed.push({
@@ -516,11 +579,7 @@
                                 });
                             }
                             resolve(parsed);
-                        } catch(err) { 
-                            console.error(err);
-                            alert("讀取失敗，請確認檔案格式");
-                            resolve([]); 
-                        }
+                        } catch(err) { resolve([]); }
                     };
                     r.readAsBinaryString(file);
                 });
@@ -560,10 +619,11 @@
                 selUser, selZone, keyword,
                 staffList, dbCount, staffCount, zoneList, displayList, currentProgress, zoneStats,
                 startInv, enterAdmin, resetDatabase, uploadStaff, uploadInventory,
-                save, setZero, isDone, calcTotal, exportZone, exportTotal
+                save, setZero, isDone, calcTotal, exportZone, exportTotal,
+                showAddModal, newItem, openAddModal, confirmAdd
             };
         }
     }).mount('#app');
 </script>
 </body>
-</html>
+    </html>
