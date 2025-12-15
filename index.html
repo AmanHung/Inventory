@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.14 (特定區域效期版)</title>
+    <title>藥局盤點系統 v5.15 (多批號效期版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/shim.min.js"></script>
@@ -92,7 +92,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-4xl font-extrabold text-blue-900 text-center mb-2">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.14</p>
+            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.15</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-4 rounded-xl mb-6 text-center text-base font-bold">連線中斷，請檢查網路</div>
 
@@ -202,13 +202,23 @@
                     </div>
                 </div>
 
-                <div v-if="expiryZones.includes(item.zone)" class="mb-4 bg-yellow-50 p-3 rounded-xl border-2 border-yellow-200 animate-pulse-slow">
-                     <label class="block text-gray-800 font-bold mb-1 text-lg">📅 有效期限 <span class="text-xs text-gray-500 font-normal">(YYYY-MM-DD)</span></label>
-                     <input type="date" v-model="item.expiry" @change="save(item)" class="w-full h-14 rounded-lg border-2 border-gray-300 bg-white text-center text-xl outline-none focus:border-blue-500 shadow-sm">
+                <div v-if="expiryZones.includes(item.zone)" class="bg-gray-50 p-2 rounded-xl border border-gray-200">
+                     <label class="block text-gray-600 font-bold mb-2 ml-1">📦 批號與效期管理</label>
+                     
+                     <div v-for="(batch, idx) in item.batches" :key="idx" class="flex gap-2 mb-2 items-center">
+                        <div class="flex-1">
+                            <input type="date" v-model="batch.expiry" @change="save(item)" class="w-full h-12 rounded-lg border border-gray-300 text-center text-lg shadow-sm">
+                        </div>
+                        <div class="w-24">
+                            <input type="number" v-model.number="batch.qty" @input="save(item)" @focus="$event.target.select()" class="w-full h-12 rounded-lg border border-gray-300 text-center text-xl font-bold shadow-sm" placeholder="數量">
+                        </div>
+                        <button @click="removeBatch(item, idx)" class="w-10 h-12 bg-red-100 text-red-500 rounded-lg font-bold border border-red-200">✕</button>
+                     </div>
+
+                     <button @click="addBatch(item)" class="w-full py-3 bg-green-100 text-green-700 font-bold rounded-lg border-2 border-dashed border-green-300 hover:bg-green-200 btn-act">＋ 新增一筆效期</button>
                 </div>
 
-                <div class="grid grid-cols-3 gap-3">
-                    
+                <div v-else class="grid grid-cols-3 gap-3">
                     <div v-if="item.units?.lg?.cap > 0" 
                          class="p-1 rounded-xl border-2 border-blue-200 bg-blue-50 flex flex-col items-center"
                          @click="$event.currentTarget.querySelector('input').focus()">
@@ -324,7 +334,7 @@
             const showAddModal = ref(false);
             const newItem = ref({ code: '', name: '', lgCap: 0, smCap: 0 });
 
-            // ⚠️ 關鍵設定：只有這些區域需要填寫效期 (可自行增減)
+            // ⚠️ 只有這些區域會啟用「多批號管理」介面
             const expiryZones = ['點滴ER', '點滴OPD'];
 
             onMounted(() => {
@@ -349,8 +359,8 @@
                         if (!item.code) item.code = '???';
                         if (!item.name) item.name = '未知藥品';
                         
-                        // 確保 expiry 欄位存在
-                        if (!item.expiry) item.expiry = ''; 
+                        // 初始化批號陣列 (給點滴區用)
+                        if (!item.batches) item.batches = [{ expiry: '', qty: 0 }];
 
                         return item;
                     }).filter(x => x !== null);
@@ -396,9 +406,24 @@
                 }));
             });
 
-            const isDone = (item) => (item.inputs.lg !== 0 || item.inputs.sm !== 0 || item.inputs.lo !== 0 || item.done);
+            // 判斷是否已盤點
+            const isDone = (item) => {
+                // 如果是特殊區域，檢查批號總量
+                if (expiryZones.includes(item.zone)) {
+                    const total = item.batches.reduce((acc, cur) => acc + cur.qty, 0);
+                    return total > 0 || item.done;
+                }
+                // 一般區域
+                return (item.inputs.lg !== 0 || item.inputs.sm !== 0 || item.inputs.lo !== 0 || item.done);
+            };
             
+            // 計算總量
             const calcTotal = (item) => {
+                // 如果是特殊區域，總量 = 所有批號數量的加總
+                if (expiryZones.includes(item.zone)) {
+                    return item.batches.reduce((acc, cur) => acc + cur.qty, 0);
+                }
+                // 一般區域
                 const lg = item.units?.lg?.cap || 0;
                 const sm = item.units?.sm?.cap || 0;
                 return (item.inputs.lg * lg) + (item.inputs.sm * sm) + item.inputs.lo;
@@ -422,15 +447,37 @@
                         user: item.user,
                         time: item.time,
                         done: true,
-                        // 同步儲存效期
-                        expiry: item.expiry || ''
+                        // 儲存批號資料
+                        batches: item.batches
                     }).then(() => isSaving.value = false).catch(e => console.error(e));
                 }, 500);
             };
 
             const setZero = (item) => {
-                item.inputs.lg = 0; item.inputs.sm = 0; item.inputs.lo = 0;
+                if (expiryZones.includes(item.zone)) {
+                    item.batches = [{ expiry: '', qty: 0 }];
+                } else {
+                    item.inputs.lg = 0; item.inputs.sm = 0; item.inputs.lo = 0;
+                }
                 save(item);
+            };
+            
+            // 批號操作功能
+            const addBatch = (item) => {
+                item.batches.push({ expiry: '', qty: 0 });
+                save(item); // 自動存檔
+            };
+
+            const removeBatch = (item, idx) => {
+                if (item.batches.length > 1) {
+                    item.batches.splice(idx, 1);
+                    save(item);
+                } else {
+                    // 如果剩最後一筆，清空數值就好，不要刪除
+                    item.batches[0].qty = 0;
+                    item.batches[0].expiry = '';
+                    save(item);
+                }
             };
 
             const resetDatabase = () => {
@@ -466,7 +513,7 @@
                     done: false,
                     user: selUser.value,
                     time: new Date().toISOString(),
-                    expiry: ''
+                    batches: [{ expiry: '', qty: 0 }]
                 };
                 
                 update(dbRef(db, `inventory/${newIdx}`), itemData)
@@ -586,7 +633,7 @@
                                     },
                                     inputs: { lg: 0, sm: 0, lo: 0 },
                                     done: false,
-                                    expiry: '' // 初始化效期
+                                    batches: [{ expiry: '', qty: 0 }] // 初始化批號
                                 });
                             }
                             resolve(parsed);
@@ -597,14 +644,33 @@
             };
 
             const exportZone = (z) => {
-                const data = inventory.value.filter(x => x.zone === z).map(x => ({
-                    '代碼': x.code, '名稱': x.name, '儲位': x.shelf,
-                    '盤點量': isDone(x) ? `${x.inputs.lg}${x.units?.lg?.name} ${x.inputs.sm}${x.units?.sm?.name} ${x.inputs.lo.name}`.trim() : '未盤',
-                    '總量': isDone(x) ? calcTotal(x) : 0, 
-                    '效期': x.expiry || '', // 匯出效期
-                    '盤點人': x.user || '',
-                    '時間': x.time ? new Date(x.time).toLocaleString() : ''
-                }));
+                const data = inventory.value.filter(x => x.zone === z).map(x => {
+                    let qtyStr = '';
+                    let expiryStr = '';
+                    
+                    if (expiryZones.includes(x.zone)) {
+                        // 特殊區域：將所有批號組合成字串
+                        const validBatches = x.batches.filter(b => b.qty > 0);
+                        if (validBatches.length > 0) {
+                            qtyStr = validBatches.map(b => `${b.qty}`).join(', ');
+                            expiryStr = validBatches.map(b => b.expiry || '無效期').join(', ');
+                        } else {
+                            qtyStr = '0';
+                        }
+                    } else {
+                        // 一般區域
+                        qtyStr = isDone(x) ? `${x.inputs.lg}${x.units?.lg?.name} ${x.inputs.sm}${x.units?.sm?.name} ${x.inputs.lo.name}`.trim() : '未盤';
+                    }
+
+                    return {
+                        '代碼': x.code, '名稱': x.name, '儲位': x.shelf,
+                        '盤點量': qtyStr,
+                        '總量': isDone(x) ? calcTotal(x) : 0, 
+                        '效期': expiryStr,
+                        '盤點人': x.user || '',
+                        '時間': x.time ? new Date(x.time).toLocaleString() : ''
+                    };
+                });
                 dlExcel(data, `盤點_${z}`);
             };
 
@@ -616,8 +682,12 @@
                         const t = calcTotal(x);
                         map[x.code][x.zone] = t; 
                         map[x.code].total += t;
-                        // 若有任何一區填寫了效期，則記錄下來 (覆蓋式)
-                        if (x.expiry) map[x.code].expiry = x.expiry; 
+                        
+                        // 匯總效期 (如果有)
+                        if (expiryZones.includes(x.zone)) {
+                             const exps = x.batches.filter(b=>b.qty>0 && b.expiry).map(b=>b.expiry).join(',');
+                             if(exps) map[x.code].expiry = exps;
+                        }
                     }
                 });
                 dlExcel(Object.values(map), '全院總表');
@@ -637,7 +707,7 @@
                 startInv, enterAdmin, resetDatabase, uploadStaff, uploadInventory,
                 save, setZero, isDone, calcTotal, exportZone, exportTotal,
                 showAddModal, newItem, openAddModal, confirmAdd,
-                expiryZones // 暴露給 Template 使用
+                expiryZones, addBatch, removeBatch
             };
         }
     }).mount('#app');
