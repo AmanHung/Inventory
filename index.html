@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.10 (單位精準對應版)</title>
+    <title>藥局盤點系統 v5.11 (CSV 強力解析版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/shim.min.js"></script>
@@ -42,6 +42,7 @@
         
         <div class="bg-red-50 p-4 rounded-lg border border-red-200 mb-6">
             <h3 class="font-bold text-red-800 mb-2">⚠️ 危險區域</h3>
+            <div class="text-xs text-red-600 mb-2">若單位顯示不正確，請先清空資料後重新匯入</div>
             <button @click="resetDatabase" class="w-full bg-red-600 text-white font-bold py-3 rounded-lg shadow hover:bg-red-700 btn-act">🔥 清空所有雲端資料</button>
         </div>
 
@@ -89,7 +90,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-3xl font-extrabold text-blue-900 text-center mb-1">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-xs mb-8 tracking-widest">FIREBASE V5.10</p>
+            <p class="text-center text-gray-400 text-xs mb-8 tracking-widest">FIREBASE V5.11</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-3 rounded mb-4 text-center text-sm font-bold">連線中斷，請檢查網路</div>
 
@@ -437,7 +438,7 @@
                             const sheet = wb.Sheets[wb.SheetNames[0]];
                             const rows = XLSX.utils.sheet_to_json(sheet, { header:1, defval:'' });
                             
-                            // Find Header Row: Look for "Code" or "代碼"
+                            // Find Header Row
                             let headIdx = -1;
                             for(let r=0; r<Math.min(rows.length, 20); r++) {
                                 const str = rows[r].join(' ');
@@ -445,7 +446,7 @@
                             }
                             if (headIdx === -1) headIdx = 0;
                             
-                            // Clean Header Helper: Remove (), /, spaces for loose matching
+                            // 關鍵修正：暴力清洗表頭 (移除括號、斜線、空格)
                             const clean = (s) => String(s).replace(/[\(\)\/\s]/g, '');
                             const header = rows[headIdx].map(x => String(x).trim());
                             
@@ -454,7 +455,7 @@
                                 name: header.findIndex(x => x.includes('名稱') || x.toLowerCase().includes('name')),
                                 shelf: header.findIndex(x => x.includes('儲位') || x.includes('門牌')),
                                 
-                                // Robust Matching for Units
+                                // 使用 clean 後的字串進行比對，確保能抓到 "量大包裝"
                                 lgCap: header.findIndex(x => { const c = clean(x); return c.includes('大包裝') && c.includes('量'); }),
                                 lgUnit: header.findIndex(x => { const c = clean(x); return c.includes('大包裝') && (c.includes('單位') || c.includes('unit')); }),
                                 
@@ -462,7 +463,6 @@
                                 smUnit: header.findIndex(x => { const c = clean(x); return c.includes('小包裝') && (c.includes('單位') || c.includes('unit')); }),
                             };
                             
-                            // Fallback if matching failed (assuming standard order)
                             if (idxMap.code === -1) {
                                 idxMap.code=0; idxMap.name=1; idxMap.shelf=3;
                                 idxMap.lgCap=4; idxMap.lgUnit=5;
@@ -479,23 +479,20 @@
                                 let lgName = row[idxMap.lgUnit] ? String(row[idxMap.lgUnit]).replace(/[\/x]/g,'').trim() : '盒';
                                 
                                 let smCap = parseInt(row[idxMap.smCap]);
-                                if (isNaN(smCap)) smCap = 0; // Default to 0 if NaN so we can detect "Empty" vs "1"
+                                if (isNaN(smCap)) smCap = 0; 
                                 
                                 let smName = row[idxMap.smUnit] ? String(row[idxMap.smUnit]).replace(/[\/x]/g,'').trim() : '';
 
-                                // Smart Unit Mapping Logic:
-                                // If smCap is 0 or 1, it means there is no "Intermediate" packaging.
-                                // The "Small Unit" column in CSV effectively describes the "Loose Unit".
-                                let loName = '顆/支'; // Default
+                                // 關鍵邏輯：若小包裝容量 <= 1，代表沒有中間層級，小包裝單位其實就是散裝單位
+                                let loName = '顆/支'; // 預設值
                                 
                                 if (smCap <= 1) {
-                                    // Case: No real small pack. 
-                                    // If CSV has a unit name (e.g., '支'), assume that is the Loose Unit.
-                                    if (smName) loName = smName;
-                                    smCap = 0; // Disable small input
-                                    smName = ''; // Clear small name
+                                    // 沒有中間包裝
+                                    if (smName) loName = smName; // 拿小包裝單位來當散裝單位
+                                    smCap = 0; // 隱藏小包裝輸入框
+                                    smName = ''; 
                                 } else {
-                                    // Case: Real small pack exists (e.g. 10 pills/strip)
+                                    // 有中間包裝 (例如 1盒=10排)
                                     if (!smName) smName = '排';
                                 }
 
