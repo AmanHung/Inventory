@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.8 (顯示盤點人員)</title>
+    <title>藥局盤點系統 v5.9 (單位對應優化版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/shim.min.js"></script>
@@ -98,7 +98,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-3xl font-extrabold text-blue-900 text-center mb-1">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-xs mb-8 tracking-widest">FIREBASE V5.8</p>
+            <p class="text-center text-gray-400 text-xs mb-8 tracking-widest">FIREBASE V5.9</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-3 rounded mb-4 text-center text-sm font-bold">連線中斷，請檢查網路</div>
 
@@ -236,7 +236,7 @@
                     <div class="p-1 rounded-xl border-2 border-orange-200 bg-orange-50 flex flex-col items-center"
                          @click="$event.currentTarget.querySelector('input').focus()">
 
-                        <label class="text-xs text-orange-900 mb-1 font-bold">顆/支</label>
+                        <label class="text-xs text-orange-900 mb-1 font-bold">{{ item.units.lo?.name || '顆/支' }}</label>
                         <input type="number" inputmode="numeric" pattern="[0-9]*" 
                                v-model.number="item.inputs.lo" @input="save(item)" @focus="$event.target.select()" 
                                class="w-full h-14 rounded-lg text-center text-xl font-black outline-none shadow-inner transition-colors p-0 border-4"
@@ -301,19 +301,13 @@
                         if (!item.inputs) item.inputs = { lg: 0, sm: 0, lo: 0 };
                         if (!item.units) item.units = {};
                         
-                        let lgN = item.units.lg?.name || '盒';
-                        let smN = item.units.sm?.name || '排';
-                        if (!isNaN(parseFloat(lgN)) || lgN.length > 5) lgN = '盒';
-                        if (!isNaN(parseFloat(smN)) || smN.length > 5) smN = '支';
-
-                        if (!item.units.lg) item.units.lg = { cap: 0, name: lgN };
-                        else item.units.lg.name = lgN;
-
-                        if (!item.units.sm) item.units.sm = { cap: 0, name: smN };
-                        else item.units.sm.name = smN;
+                        // 確保 units 結構完整
+                        if (!item.units.lg) item.units.lg = { cap: 0, name: '盒' };
+                        if (!item.units.sm) item.units.sm = { cap: 0, name: '排' };
+                        if (!item.units.lo) item.units.lo = { name: '顆/支' }; // 新增散裝單位
                         
                         if (item.done === undefined) item.done = false;
-                        if (!item.user) item.user = ''; // 確保 user 欄位存在
+                        if (!item.user) item.user = '';
                         if (!item.code) item.code = '???';
                         if (!item.name) item.name = '未知藥品';
                         return item;
@@ -463,32 +457,58 @@
                             }
                             if (headIdx === -1) headIdx = 0;
                             const header = rows[headIdx].map(x => String(x).trim());
+                            
+                            // 修正：更精準的對應邏輯
                             const idxMap = {
                                 code: header.findIndex(x => x.includes('代碼') || x.includes('Code')),
                                 name: header.findIndex(x => x.includes('名稱') || x.includes('Name')),
                                 shelf: header.findIndex(x => x.includes('儲位') || x.includes('門牌')),
+                                
+                                // 大包裝
                                 lgCap: header.findIndex(x => x.includes('大包裝') && x.includes('量')),
                                 lgUnit: header.findIndex(x => x.includes('大包裝') && (x.includes('單位')||x.includes('/'))),
+                                
+                                // 小包裝
                                 smCap: header.findIndex(x => x.includes('小包裝') && x.includes('量')),
                                 smUnit: header.findIndex(x => x.includes('小包裝') && (x.includes('單位')||x.includes('/'))),
+                                
+                                // 散裝 (New)
+                                loUnit: header.findIndex(x => x.includes('散裝') && x.includes('單位'))
                             };
+                            
                             if (idxMap.code === -1) {
+                                // Fallback
                                 idxMap.code=0; idxMap.name=1; idxMap.shelf=3;
                                 idxMap.lgCap=4; idxMap.lgUnit=5;
                                 idxMap.smCap=6; idxMap.smUnit=7;
                             }
+                            
                             const parsed = [];
                             for(let r=headIdx+1; r<rows.length; r++) {
                                 const row = rows[r];
                                 const code = row[idxMap.code] ? String(row[idxMap.code]).trim() : '';
                                 if (!code) continue;
+                                
                                 let lgCap = parseInt(row[idxMap.lgCap]) || 0;
                                 let lgName = row[idxMap.lgUnit] ? String(row[idxMap.lgUnit]).replace(/[\/x]/g,'').trim() : '盒';
+                                
                                 let smCap = parseInt(row[idxMap.smCap]) || 1;
-                                let smName = row[idxMap.smUnit] ? String(row[idxMap.smUnit]).replace(/[\/x]/g,'').trim() : '排';
+                                // 修正：小包裝單位的智慧預設值
+                                let smRaw = row[idxMap.smUnit] ? String(row[idxMap.smUnit]).replace(/[\/x]/g,'').trim() : '';
+                                let smName = smRaw;
+                                if (!smName) smName = (smCap === 1 ? '支' : '排');
 
                                 if (!isNaN(parseFloat(lgName)) || lgName.length > 5) lgName = '盒';
                                 if (!isNaN(parseFloat(smName)) || smName.length > 5) smName = '支';
+
+                                // 散裝單位邏輯
+                                let loName = '顆/支';
+                                if (idxMap.loUnit !== -1 && row[idxMap.loUnit]) {
+                                    loName = String(row[idxMap.loUnit]).trim();
+                                } else if (smCap === 1 && smRaw) {
+                                    // 如果小包裝容量是1，且有定義單位，則該單位其實就是散裝單位
+                                    loName = smRaw;
+                                }
 
                                 parsed.push({
                                     id: `${zone}_${code}_${r}`,
@@ -496,7 +516,11 @@
                                     name: row[idxMap.name] || '無品名',
                                     shelf: row[idxMap.shelf] || '',
                                     zone,
-                                    units: { lg: { cap: lgCap, name: lgName }, sm: { cap: smCap, name: smName } },
+                                    units: { 
+                                        lg: { cap: lgCap, name: lgName }, 
+                                        sm: { cap: smCap, name: smName },
+                                        lo: { name: loName } 
+                                    },
                                     inputs: { lg: 0, sm: 0, lo: 0 },
                                     done: false
                                 });
@@ -511,7 +535,7 @@
             const exportZone = (z) => {
                 const data = inventory.value.filter(x => x.zone === z).map(x => ({
                     '代碼': x.code, '名稱': x.name, '儲位': x.shelf,
-                    '盤點量': isDone(x) ? `${x.inputs.lg}${x.units?.lg?.name} ${x.inputs.sm}${x.units?.sm?.name} ${x.inputs.lo}顆` : '未盤',
+                    '盤點量': isDone(x) ? `${x.inputs.lg}${x.units?.lg?.name} ${x.inputs.sm}${x.units?.sm?.name} ${x.inputs.lo.name || '顆'}` : '未盤',
                     '總量': isDone(x) ? calcTotal(x) : 0, '盤點人': x.user || '',
                     '時間': x.time ? new Date(x.time).toLocaleString() : ''
                 }));
