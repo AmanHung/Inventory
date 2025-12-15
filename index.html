@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.13 (現場補單功能)</title>
+    <title>藥局盤點系統 v5.14 (特定區域效期版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/shim.min.js"></script>
@@ -30,7 +30,6 @@
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; }
         
-        /* Modal 背景模糊效果 */
         .modal-backdrop { background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(2px); }
     </style>
 </head>
@@ -93,7 +92,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-4xl font-extrabold text-blue-900 text-center mb-2">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.13</p>
+            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.14</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-4 rounded-xl mb-6 text-center text-base font-bold">連線中斷，請檢查網路</div>
 
@@ -201,6 +200,11 @@
                         <div v-else class="text-xl font-bold text-red-400 animate-pulse bg-red-50 px-3 py-1 rounded">未盤</div>
                         <button v-if="!isDone(item)" @click="setZero(item)" class="text-sm mt-3 bg-gray-500 text-white px-4 py-2 rounded-lg shadow hover:bg-gray-600 btn-act w-full">🗑️ 無庫存</button>
                     </div>
+                </div>
+
+                <div v-if="expiryZones.includes(item.zone)" class="mb-4 bg-yellow-50 p-3 rounded-xl border-2 border-yellow-200 animate-pulse-slow">
+                     <label class="block text-gray-800 font-bold mb-1 text-lg">📅 有效期限 <span class="text-xs text-gray-500 font-normal">(YYYY-MM-DD)</span></label>
+                     <input type="date" v-model="item.expiry" @change="save(item)" class="w-full h-14 rounded-lg border-2 border-gray-300 bg-white text-center text-xl outline-none focus:border-blue-500 shadow-sm">
                 </div>
 
                 <div class="grid grid-cols-3 gap-3">
@@ -318,9 +322,10 @@
             
             // Add Modal State
             const showAddModal = ref(false);
-            const newItem = ref({
-                code: '', name: '', lgCap: 0, smCap: 0
-            });
+            const newItem = ref({ code: '', name: '', lgCap: 0, smCap: 0 });
+
+            // ⚠️ 關鍵設定：只有這些區域需要填寫效期 (可自行增減)
+            const expiryZones = ['點滴ER', '點滴OPD'];
 
             onMounted(() => {
                 onValue(dbRef(db, ".info/connected"), s => isOnline.value = s.val());
@@ -343,6 +348,10 @@
                         if (!item.user) item.user = '';
                         if (!item.code) item.code = '???';
                         if (!item.name) item.name = '未知藥品';
+                        
+                        // 確保 expiry 欄位存在
+                        if (!item.expiry) item.expiry = ''; 
+
                         return item;
                     }).filter(x => x !== null);
                 });
@@ -412,7 +421,9 @@
                         inputs: item.inputs,
                         user: item.user,
                         time: item.time,
-                        done: true
+                        done: true,
+                        // 同步儲存效期
+                        expiry: item.expiry || ''
                     }).then(() => isSaving.value = false).catch(e => console.error(e));
                 }, 500);
             };
@@ -430,7 +441,6 @@
                 }
             };
 
-            // Add Item Logic
             const openAddModal = () => {
                 newItem.value = { code: '', name: '', lgCap: 0, smCap: 0 };
                 showAddModal.value = true;
@@ -455,15 +465,15 @@
                     inputs: { lg: 0, sm: 0, lo: 0 },
                     done: false,
                     user: selUser.value,
-                    time: new Date().toISOString()
+                    time: new Date().toISOString(),
+                    expiry: ''
                 };
                 
-                // Save to Firebase
                 update(dbRef(db, `inventory/${newIdx}`), itemData)
                     .then(() => {
                         alert("新增成功！");
                         showAddModal.value = false;
-                        keyword.value = newItem.value.code; // Auto search
+                        keyword.value = newItem.value.code; 
                     });
             };
 
@@ -575,7 +585,8 @@
                                         lo: { name: loName } 
                                     },
                                     inputs: { lg: 0, sm: 0, lo: 0 },
-                                    done: false
+                                    done: false,
+                                    expiry: '' // 初始化效期
                                 });
                             }
                             resolve(parsed);
@@ -589,7 +600,9 @@
                 const data = inventory.value.filter(x => x.zone === z).map(x => ({
                     '代碼': x.code, '名稱': x.name, '儲位': x.shelf,
                     '盤點量': isDone(x) ? `${x.inputs.lg}${x.units?.lg?.name} ${x.inputs.sm}${x.units?.sm?.name} ${x.inputs.lo.name}`.trim() : '未盤',
-                    '總量': isDone(x) ? calcTotal(x) : 0, '盤點人': x.user || '',
+                    '總量': isDone(x) ? calcTotal(x) : 0, 
+                    '效期': x.expiry || '', // 匯出效期
+                    '盤點人': x.user || '',
                     '時間': x.time ? new Date(x.time).toLocaleString() : ''
                 }));
                 dlExcel(data, `盤點_${z}`);
@@ -598,10 +611,13 @@
             const exportTotal = () => {
                 const map = {};
                 inventory.value.forEach(x => {
-                    if (!map[x.code]) map[x.code] = { code:x.code, name:x.name, total:0 };
+                    if (!map[x.code]) map[x.code] = { code:x.code, name:x.name, total:0, expiry:'' };
                     if (isDone(x)) {
                         const t = calcTotal(x);
-                        map[x.code][x.zone] = t; map[x.code].total += t;
+                        map[x.code][x.zone] = t; 
+                        map[x.code].total += t;
+                        // 若有任何一區填寫了效期，則記錄下來 (覆蓋式)
+                        if (x.expiry) map[x.code].expiry = x.expiry; 
                     }
                 });
                 dlExcel(Object.values(map), '全院總表');
@@ -620,10 +636,11 @@
                 staffList, dbCount, staffCount, zoneList, displayList, currentProgress, zoneStats,
                 startInv, enterAdmin, resetDatabase, uploadStaff, uploadInventory,
                 save, setZero, isDone, calcTotal, exportZone, exportTotal,
-                showAddModal, newItem, openAddModal, confirmAdd
+                showAddModal, newItem, openAddModal, confirmAdd,
+                expiryZones // 暴露給 Template 使用
             };
         }
     }).mount('#app');
 </script>
 </body>
-    </html>
+</html>
