@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.17 (儲位分層導航版)</title>
+    <title>藥局盤點系統 v5.18 (智慧導航優化版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/shim.min.js"></script>
@@ -96,7 +96,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-4xl font-extrabold text-blue-900 text-center mb-2">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.17</p>
+            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.18</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-4 rounded-xl mb-6 text-center text-base font-bold">連線中斷，請檢查網路</div>
 
@@ -183,14 +183,15 @@
 
                 <button @click="resetFilters" 
                         class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-bold border transition-colors btn-act"
-                        :class="selGroup==='' ? 'bg-white text-blue-800 border-white' : 'bg-blue-800/50 text-blue-200 border-blue-500'">
-                    全部櫃位
+                        :class="!selGroup && !selShelf ? 'bg-white text-blue-800 border-white' : 'bg-blue-800/50 text-blue-200 border-blue-500'">
+                    全部
                 </button>
                 
-                <button v-for="g in shelfGroups" :key="g" @click="selectGroup(g)" 
-                        class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-bold border transition-colors btn-act"
-                        :class="selGroup===g ? 'bg-white text-blue-800 border-white' : 'bg-blue-800/50 text-blue-200 border-blue-500'">
-                    {{ g }}
+                <button v-for="item in navItems" :key="item.value" @click="handleNavClick(item)" 
+                        class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-bold border transition-colors btn-act flex items-center gap-1"
+                        :class="isActiveNav(item) ? 'bg-white text-blue-800 border-white' : 'bg-blue-800/50 text-blue-200 border-blue-500'">
+                    <span v-if="item.type==='group'">📂</span>
+                    {{ item.label }}
                 </button>
             </div>
 
@@ -368,14 +369,13 @@
             
             // Filters
             const showOnlyPending = ref(false);
-            const selGroup = ref(''); // Level 1: Main Group (e.g. A, 調A)
-            const selShelf = ref(''); // Level 2: Specific Shelf (e.g. A1, 調A2)
+            const selGroup = ref(''); // Level 1
+            const selShelf = ref(''); // Level 2
 
             // Add Modal State
             const showAddModal = ref(false);
             const newItem = ref({ code: '', name: '', lgCap: 0, smCap: 0 });
 
-            // Special Zones
             const expiryZones = ['點滴ER', '點滴OPD'];
 
             onMounted(() => {
@@ -407,7 +407,7 @@
                 });
             });
 
-            // Watch zone change to reset all filters
+            // Reset filters on zone change
             watch(selZone, () => {
                 resetFilters();
             });
@@ -419,41 +419,76 @@
                 keyword.value = '';
             };
 
-            const selectGroup = (g) => {
-                selGroup.value = g;
-                selShelf.value = ''; // Reset level 2
-            };
-
             const dbCount = computed(() => inventory.value.length);
             const staffCount = computed(() => staffList.value.length);
             const zoneList = computed(() => [...new Set(inventory.value.map(i => i.zone))].sort());
             
-            // Computed: Groups (Level 1)
-            // Logic: Extract Prefix from Shelf Name (e.g., "A1" -> "A", "調A1" -> "調A")
-            const shelfGroups = computed(() => {
-                const items = inventory.value.filter(i => i.zone === selZone.value && i.shelf);
-                const groups = new Set();
-                items.forEach(i => {
-                    // Regex: Match non-digit prefix. e.g. "A1" -> "A", "調A1" -> "調A"
-                    // If no match (e.g. "123"), treat as "其他"
-                    const match = i.shelf.match(/^([^\d]+)/); 
-                    if (match) groups.add(match[1]);
-                    else groups.add('其他');
+            // --- Intelligent Grouping Logic (The Brain) ---
+            const getGroup = (shelf) => {
+                if (!shelf) return '其他';
+                // 1. Special Keywords (Use first 2 chars)
+                const keywords = ['機器', '外用', '外眼'];
+                for (const k of keywords) {
+                    if (shelf.startsWith(k)) return k;
+                }
+                // 2. Default Pattern: Non-digit prefix (e.g. A1 -> A, 調A1 -> 調A)
+                const match = shelf.match(/^([^\d]+)/);
+                if (match) return match[1];
+                return '其他';
+            };
+
+            // --- Hybrid Nav Items Generation ---
+            const navItems = computed(() => {
+                const currentItems = inventory.value.filter(i => i.zone === selZone.value && i.shelf);
+                const groups = {}; // Map<Group, Set<Shelf>>
+                
+                currentItems.forEach(i => {
+                    const g = getGroup(i.shelf);
+                    if (!groups[g]) groups[g] = new Set();
+                    groups[g].add(i.shelf);
                 });
-                return Array.from(groups).sort();
+
+                // Convert to mixed list
+                const items = [];
+                Object.keys(groups).sort().forEach(g => {
+                    const shelves = Array.from(groups[g]);
+                    if (shelves.length === 1) {
+                        // Singleton: Promote to Top Level Shelf
+                        items.push({ label: shelves[0], value: shelves[0], type: 'shelf' });
+                    } else {
+                        // Multiple: Keep as Group
+                        items.push({ label: g, value: g, type: 'group' });
+                    }
+                });
+                return items;
             });
 
-            // Computed: Sub Shelves (Level 2)
-            // Shows only shelves belonging to the selected Group
+            // Handle Top Nav Click
+            const handleNavClick = (item) => {
+                if (item.type === 'group') {
+                    // Clicked a Group -> Set Group, Show Sub-nav
+                    selGroup.value = item.value;
+                    selShelf.value = ''; // Reset sub selection
+                } else {
+                    // Clicked a Singleton Shelf -> Filter directly
+                    selShelf.value = item.value;
+                    selGroup.value = ''; // No group active
+                }
+            };
+
+            // Check if nav item is active
+            const isActiveNav = (item) => {
+                if (item.type === 'group') return selGroup.value === item.value;
+                return selShelf.value === item.value;
+            };
+
+            // Computed Sub Shelves (Level 2)
             const currentSubShelves = computed(() => {
                 if (!selGroup.value) return [];
                 const items = inventory.value.filter(i => i.zone === selZone.value);
                 const shelves = new Set();
-                
                 items.forEach(i => {
-                    const match = i.shelf ? i.shelf.match(/^([^\d]+)/) : null;
-                    const group = match ? match[1] : '其他';
-                    if (group === selGroup.value) {
+                    if (getGroup(i.shelf) === selGroup.value) {
                         shelves.add(i.shelf);
                     }
                 });
@@ -464,7 +499,6 @@
                 if (!selZone.value) return [];
                 let list = inventory.value.filter(i => i.zone === selZone.value);
                 
-                // 1. Keyword Filter
                 if (keyword.value) {
                     const k = keyword.value.trim().toLowerCase();
                     list = list.filter(i => 
@@ -473,20 +507,15 @@
                     );
                 }
 
-                // 2. Hierarchy Filter (Group > Shelf)
+                // Filtering Logic
                 if (selShelf.value) {
-                    // Exact shelf match (Level 2 selected)
+                    // Specific shelf selected (either from Singleton Top Nav or Sub Nav)
                     list = list.filter(i => i.shelf === selShelf.value);
                 } else if (selGroup.value) {
-                    // Group match (Level 1 selected)
-                    list = list.filter(i => {
-                        const match = i.shelf ? i.shelf.match(/^([^\d]+)/) : null;
-                        const group = match ? match[1] : '其他';
-                        return group === selGroup.value;
-                    });
+                    // Group selected (Level 1)
+                    list = list.filter(i => getGroup(i.shelf) === selGroup.value);
                 }
 
-                // 3. Pending Filter
                 if (showOnlyPending.value) {
                     list = list.filter(i => !isDone(i));
                 }
@@ -806,7 +835,7 @@
                 save, setZero, isDone, calcTotal, exportZone, exportTotal,
                 showAddModal, newItem, openAddModal, confirmAdd,
                 expiryZones, addBatch, removeBatch,
-                showOnlyPending, selShelf, selGroup, shelfGroups, currentSubShelves, resetFilters, selectGroup
+                showOnlyPending, selShelf, selGroup, currentSubShelves, resetFilters, selectGroup, navItems, handleNavClick, isActiveNav
             };
         }
     }).mount('#app');
