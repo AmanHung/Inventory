@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.15 (多批號效期版)</title>
+    <title>藥局盤點系統 v5.16 (雙重篩選版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/shim.min.js"></script>
@@ -26,6 +26,10 @@
         .dot-green { background: #22c55e; box-shadow: 0 0 4px #22c55e; }
         .dot-red { background: #ef4444; }
         .custom-scroll { -webkit-overflow-scrolling: touch; }
+        
+        /* 隱藏捲軸但保留捲動功能 (Chrome/Safari) */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; }
@@ -92,7 +96,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-4xl font-extrabold text-blue-900 text-center mb-2">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.15</p>
+            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.16</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-4 rounded-xl mb-6 text-center text-base font-bold">連線中斷，請檢查網路</div>
 
@@ -128,8 +132,8 @@
     </div>
 
     <div v-else class="flex-1 flex flex-col h-full overflow-hidden bg-gray-100">
-        <div class="bg-blue-600 p-4 text-white shadow-md z-10 shrink-0">
-            <div class="flex justify-between items-center mb-3">
+        <div class="bg-blue-600 p-4 text-white shadow-md z-10 shrink-0 flex flex-col gap-3">
+            <div class="flex justify-between items-center">
                 <div>
                     <div class="font-bold text-xl leading-tight">{{ selUser }}</div>
                     <div class="text-sm text-blue-200">{{ selZone }}</div>
@@ -145,15 +149,17 @@
                 </div>
             </div>
             
-            <div class="flex justify-between text-xs text-blue-100 mb-1">
-                <span>完成進度</span>
-                <span>{{ currentProgress.done }}/{{ currentProgress.total }} ({{ currentProgress.pct }}%)</span>
-            </div>
-            <div class="w-full bg-blue-800 h-2.5 rounded-full overflow-hidden">
-                <div class="bg-green-400 h-full transition-all duration-300" :style="{width: currentProgress.pct+'%'}"></div>
+            <div>
+                <div class="flex justify-between text-xs text-blue-100 mb-1">
+                    <span>完成進度</span>
+                    <span>{{ currentProgress.done }}/{{ currentProgress.total }} ({{ currentProgress.pct }}%)</span>
+                </div>
+                <div class="w-full bg-blue-800 h-2.5 rounded-full overflow-hidden">
+                    <div class="bg-green-400 h-full transition-all duration-300" :style="{width: currentProgress.pct+'%'}"></div>
+                </div>
             </div>
             
-            <div class="mt-3 relative flex gap-2">
+            <div class="relative flex gap-2">
                 <div class="relative flex-1">
                     <input v-model="keyword" type="text" placeholder="搜尋藥名、代碼..." class="w-full pl-10 pr-10 py-3 rounded-lg text-gray-800 text-base outline-none shadow-inner">
                     <div class="absolute left-3 top-3.5 text-gray-400 pointer-events-none">
@@ -165,12 +171,35 @@
                 </div>
                 <button @click="openAddModal" class="bg-green-500 hover:bg-green-600 text-white font-bold px-4 rounded-lg shadow btn-act text-2xl flex items-center justify-center">＋</button>
             </div>
+
+            <div class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                <button @click="showOnlyPending = !showOnlyPending" 
+                        class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-bold border transition-colors btn-act"
+                        :class="showOnlyPending ? 'bg-yellow-400 text-yellow-900 border-yellow-500' : 'bg-blue-800/50 text-blue-100 border-blue-500'">
+                    {{ showOnlyPending ? '⚡ 只看未盤' : '顯示全部' }}
+                </button>
+
+                <div class="w-px h-6 bg-blue-400 shrink-0"></div>
+
+                <button @click="selShelf=''" 
+                        class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-bold border transition-colors btn-act"
+                        :class="selShelf==='' ? 'bg-white text-blue-800 border-white' : 'bg-blue-800/50 text-blue-200 border-blue-500'">
+                    全部儲位
+                </button>
+                
+                <button v-for="s in shelfList" :key="s" @click="selShelf=s" 
+                        class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-bold border transition-colors btn-act"
+                        :class="selShelf===s ? 'bg-white text-blue-800 border-white' : 'bg-blue-800/50 text-blue-200 border-blue-500'">
+                    {{ s }}
+                </button>
+            </div>
         </div>
 
         <div class="flex-1 overflow-y-auto p-3 pb-32 custom-scroll">
             <div v-if="displayList.length === 0" class="flex flex-col items-center justify-center mt-20 text-gray-400">
                 <div class="text-5xl mb-3">📭</div>
                 <p class="text-lg">找不到符合的藥品</p>
+                <div v-if="showOnlyPending" class="text-sm mt-2 text-yellow-600">(已開啟「只看未盤」篩選)</div>
                 <button @click="openAddModal" class="mt-4 text-blue-600 underline">新增藥品?</button>
             </div>
 
@@ -204,7 +233,6 @@
 
                 <div v-if="expiryZones.includes(item.zone)" class="bg-gray-50 p-2 rounded-xl border border-gray-200">
                      <label class="block text-gray-600 font-bold mb-2 ml-1">📦 批號與效期管理</label>
-                     
                      <div v-for="(batch, idx) in item.batches" :key="idx" class="flex gap-2 mb-2 items-center">
                         <div class="flex-1">
                             <input type="date" v-model="batch.expiry" @change="save(item)" class="w-full h-12 rounded-lg border border-gray-300 text-center text-lg shadow-sm">
@@ -214,7 +242,6 @@
                         </div>
                         <button @click="removeBatch(item, idx)" class="w-10 h-12 bg-red-100 text-red-500 rounded-lg font-bold border border-red-200">✕</button>
                      </div>
-
                      <button @click="addBatch(item)" class="w-full py-3 bg-green-100 text-green-700 font-bold rounded-lg border-2 border-dashed border-green-300 hover:bg-green-200 btn-act">＋ 新增一筆效期</button>
                 </div>
 
@@ -300,7 +327,7 @@
         return false;
     };
 
-    import { createApp, ref, computed, onMounted } from "https://unpkg.com/vue@3/dist/vue.esm-browser.js";
+    import { createApp, ref, computed, onMounted, watch } from "https://unpkg.com/vue@3/dist/vue.esm-browser.js";
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getDatabase, ref as dbRef, set, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
@@ -330,11 +357,15 @@
             const selZone = ref('');
             const keyword = ref('');
             
+            // New Filter States
+            const showOnlyPending = ref(false);
+            const selShelf = ref('');
+
             // Add Modal State
             const showAddModal = ref(false);
             const newItem = ref({ code: '', name: '', lgCap: 0, smCap: 0 });
 
-            // ⚠️ 只有這些區域會啟用「多批號管理」介面
+            // Special Zones
             const expiryZones = ['點滴ER', '點滴OPD'];
 
             onMounted(() => {
@@ -359,7 +390,6 @@
                         if (!item.code) item.code = '???';
                         if (!item.name) item.name = '未知藥品';
                         
-                        // 初始化批號陣列 (給點滴區用)
                         if (!item.batches) item.batches = [{ expiry: '', qty: 0 }];
 
                         return item;
@@ -367,13 +397,28 @@
                 });
             });
 
+            // Watch zone change to reset shelf filter
+            watch(selZone, () => {
+                selShelf.value = '';
+                showOnlyPending.value = false;
+            });
+
             const dbCount = computed(() => inventory.value.length);
             const staffCount = computed(() => staffList.value.length);
             const zoneList = computed(() => [...new Set(inventory.value.map(i => i.zone))].sort());
             
+            // Computed: List of shelves in current zone
+            const shelfList = computed(() => {
+                const items = inventory.value.filter(i => i.zone === selZone.value);
+                // Extract unique shelves, sort them
+                return [...new Set(items.map(i => i.shelf).filter(s => s))].sort();
+            });
+
             const displayList = computed(() => {
                 if (!selZone.value) return [];
                 let list = inventory.value.filter(i => i.zone === selZone.value);
+                
+                // 1. Keyword Filter
                 if (keyword.value) {
                     const k = keyword.value.trim().toLowerCase();
                     list = list.filter(i => 
@@ -381,6 +426,17 @@
                         (i.code && i.code.toLowerCase().includes(k))
                     );
                 }
+
+                // 2. Shelf Filter
+                if (selShelf.value) {
+                    list = list.filter(i => i.shelf === selShelf.value);
+                }
+
+                // 3. Pending Filter
+                if (showOnlyPending.value) {
+                    list = list.filter(i => !isDone(i));
+                }
+
                 return list;
             });
 
@@ -406,24 +462,18 @@
                 }));
             });
 
-            // 判斷是否已盤點
             const isDone = (item) => {
-                // 如果是特殊區域，檢查批號總量
                 if (expiryZones.includes(item.zone)) {
                     const total = item.batches.reduce((acc, cur) => acc + cur.qty, 0);
                     return total > 0 || item.done;
                 }
-                // 一般區域
                 return (item.inputs.lg !== 0 || item.inputs.sm !== 0 || item.inputs.lo !== 0 || item.done);
             };
             
-            // 計算總量
             const calcTotal = (item) => {
-                // 如果是特殊區域，總量 = 所有批號數量的加總
                 if (expiryZones.includes(item.zone)) {
                     return item.batches.reduce((acc, cur) => acc + cur.qty, 0);
                 }
-                // 一般區域
                 const lg = item.units?.lg?.cap || 0;
                 const sm = item.units?.sm?.cap || 0;
                 return (item.inputs.lg * lg) + (item.inputs.sm * sm) + item.inputs.lo;
@@ -447,7 +497,6 @@
                         user: item.user,
                         time: item.time,
                         done: true,
-                        // 儲存批號資料
                         batches: item.batches
                     }).then(() => isSaving.value = false).catch(e => console.error(e));
                 }, 500);
@@ -462,10 +511,9 @@
                 save(item);
             };
             
-            // 批號操作功能
             const addBatch = (item) => {
                 item.batches.push({ expiry: '', qty: 0 });
-                save(item); // 自動存檔
+                save(item); 
             };
 
             const removeBatch = (item, idx) => {
@@ -473,7 +521,6 @@
                     item.batches.splice(idx, 1);
                     save(item);
                 } else {
-                    // 如果剩最後一筆，清空數值就好，不要刪除
                     item.batches[0].qty = 0;
                     item.batches[0].expiry = '';
                     save(item);
@@ -633,7 +680,7 @@
                                     },
                                     inputs: { lg: 0, sm: 0, lo: 0 },
                                     done: false,
-                                    batches: [{ expiry: '', qty: 0 }] // 初始化批號
+                                    batches: [{ expiry: '', qty: 0 }] 
                                 });
                             }
                             resolve(parsed);
@@ -649,7 +696,6 @@
                     let expiryStr = '';
                     
                     if (expiryZones.includes(x.zone)) {
-                        // 特殊區域：將所有批號組合成字串
                         const validBatches = x.batches.filter(b => b.qty > 0);
                         if (validBatches.length > 0) {
                             qtyStr = validBatches.map(b => `${b.qty}`).join(', ');
@@ -658,7 +704,6 @@
                             qtyStr = '0';
                         }
                     } else {
-                        // 一般區域
                         qtyStr = isDone(x) ? `${x.inputs.lg}${x.units?.lg?.name} ${x.inputs.sm}${x.units?.sm?.name} ${x.inputs.lo.name}`.trim() : '未盤';
                     }
 
@@ -683,7 +728,6 @@
                         map[x.code][x.zone] = t; 
                         map[x.code].total += t;
                         
-                        // 匯總效期 (如果有)
                         if (expiryZones.includes(x.zone)) {
                              const exps = x.batches.filter(b=>b.qty>0 && b.expiry).map(b=>b.expiry).join(',');
                              if(exps) map[x.code].expiry = exps;
@@ -707,7 +751,8 @@
                 startInv, enterAdmin, resetDatabase, uploadStaff, uploadInventory,
                 save, setZero, isDone, calcTotal, exportZone, exportTotal,
                 showAddModal, newItem, openAddModal, confirmAdd,
-                expiryZones, addBatch, removeBatch
+                expiryZones, addBatch, removeBatch,
+                showOnlyPending, selShelf, shelfList
             };
         }
     }).mount('#app');
