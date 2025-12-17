@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.18 (智慧導航優化版)</title>
+    <title>藥局盤點系統 v5.19 (防崩潰修復版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/shim.min.js"></script>
@@ -96,7 +96,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-4xl font-extrabold text-blue-900 text-center mb-2">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.18</p>
+            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.19</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-4 rounded-xl mb-6 text-center text-base font-bold">連線中斷，請檢查網路</div>
 
@@ -369,8 +369,8 @@
             
             // Filters
             const showOnlyPending = ref(false);
-            const selGroup = ref(''); // Level 1
-            const selShelf = ref(''); // Level 2
+            const selGroup = ref('');
+            const selShelf = ref('');
 
             // Add Modal State
             const showAddModal = ref(false);
@@ -400,6 +400,9 @@
                         if (!item.code) item.code = '???';
                         if (!item.name) item.name = '未知藥品';
                         
+                        // Fix for possible number shelf crash
+                        item.shelf = String(item.shelf || '');
+
                         if (!item.batches) item.batches = [{ expiry: '', qty: 0 }];
 
                         return item;
@@ -407,10 +410,7 @@
                 });
             });
 
-            // Reset filters on zone change
-            watch(selZone, () => {
-                resetFilters();
-            });
+            watch(selZone, () => { resetFilters(); });
 
             const resetFilters = () => {
                 selGroup.value = '';
@@ -423,24 +423,27 @@
             const staffCount = computed(() => staffList.value.length);
             const zoneList = computed(() => [...new Set(inventory.value.map(i => i.zone))].sort());
             
-            // --- Intelligent Grouping Logic (The Brain) ---
+            // --- Intelligent Grouping Logic (v5.19 Fix) ---
             const getGroup = (shelf) => {
                 if (!shelf) return '其他';
-                // 1. Special Keywords (Use first 2 chars)
+                const s = String(shelf); // Ensure String for match
+                
+                // 1. Custom Keywords (Force 2 chars)
                 const keywords = ['機器', '外用', '外眼'];
                 for (const k of keywords) {
-                    if (shelf.startsWith(k)) return k;
+                    if (s.startsWith(k)) return k; // e.g. "外用A" -> Group "外用"
                 }
-                // 2. Default Pattern: Non-digit prefix (e.g. A1 -> A, 調A1 -> 調A)
-                const match = shelf.match(/^([^\d]+)/);
+                
+                // 2. Default: Non-digit prefix
+                const match = s.match(/^([^\d]+)/);
                 if (match) return match[1];
                 return '其他';
             };
 
-            // --- Hybrid Nav Items Generation ---
+            // --- Hybrid Nav Items ---
             const navItems = computed(() => {
                 const currentItems = inventory.value.filter(i => i.zone === selZone.value && i.shelf);
-                const groups = {}; // Map<Group, Set<Shelf>>
+                const groups = {}; 
                 
                 currentItems.forEach(i => {
                     const g = getGroup(i.shelf);
@@ -448,41 +451,33 @@
                     groups[g].add(i.shelf);
                 });
 
-                // Convert to mixed list
                 const items = [];
                 Object.keys(groups).sort().forEach(g => {
                     const shelves = Array.from(groups[g]);
                     if (shelves.length === 1) {
-                        // Singleton: Promote to Top Level Shelf
                         items.push({ label: shelves[0], value: shelves[0], type: 'shelf' });
                     } else {
-                        // Multiple: Keep as Group
                         items.push({ label: g, value: g, type: 'group' });
                     }
                 });
                 return items;
             });
 
-            // Handle Top Nav Click
             const handleNavClick = (item) => {
                 if (item.type === 'group') {
-                    // Clicked a Group -> Set Group, Show Sub-nav
                     selGroup.value = item.value;
-                    selShelf.value = ''; // Reset sub selection
+                    selShelf.value = '';
                 } else {
-                    // Clicked a Singleton Shelf -> Filter directly
                     selShelf.value = item.value;
-                    selGroup.value = ''; // No group active
+                    selGroup.value = '';
                 }
             };
 
-            // Check if nav item is active
             const isActiveNav = (item) => {
                 if (item.type === 'group') return selGroup.value === item.value;
                 return selShelf.value === item.value;
             };
 
-            // Computed Sub Shelves (Level 2)
             const currentSubShelves = computed(() => {
                 if (!selGroup.value) return [];
                 const items = inventory.value.filter(i => i.zone === selZone.value);
@@ -507,12 +502,9 @@
                     );
                 }
 
-                // Filtering Logic
                 if (selShelf.value) {
-                    // Specific shelf selected (either from Singleton Top Nav or Sub Nav)
                     list = list.filter(i => i.shelf === selShelf.value);
                 } else if (selGroup.value) {
-                    // Group selected (Level 1)
                     list = list.filter(i => getGroup(i.shelf) === selGroup.value);
                 }
 
