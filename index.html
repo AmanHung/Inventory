@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.21 (電腦版優化+分類修復)</title>
+    <title>藥局盤點系統 v5.22 (分類去重終極版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/shim.min.js"></script>
@@ -27,16 +27,12 @@
         .dot-red { background: #ef4444; }
         .custom-scroll { -webkit-overflow-scrolling: touch; }
         
-        /* 針對橫向捲動區優化 */
-        .drag-scroll {
-            cursor: grab;
-            overflow-x: auto;
-            /* 隱藏預設捲軸但在電腦上保留功能 */
-            scrollbar-width: thin; 
-            scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
-        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* 電腦版拖曳捲動游標 */
+        .drag-scroll { cursor: grab; overflow-x: auto; scrollbar-width: thin; scrollbar-color: rgba(156, 163, 175, 0.5) transparent; }
         .drag-scroll:active { cursor: grabbing; }
-        /* Chrome/Safari 捲軸樣式微調 */
         .drag-scroll::-webkit-scrollbar { height: 4px; }
         .drag-scroll::-webkit-scrollbar-thumb { background: rgba(156, 163, 175, 0.5); border-radius: 4px; }
         .drag-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -106,7 +102,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-4xl font-extrabold text-blue-900 text-center mb-2">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.21</p>
+            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.22</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-4 rounded-xl mb-6 text-center text-base font-bold">連線中斷，請檢查網路</div>
 
@@ -401,6 +397,8 @@
                     
                     inventory.value = arr.map(item => {
                         if (!item) return null;
+                        
+                        // Safety Checks
                         if (!item.inputs) item.inputs = { lg: 0, sm: 0, lo: 0 };
                         if (!item.units) item.units = { lg: {cap:0,name:'盒'}, sm: {cap:0,name:'排'}, lo: {name:'支'} };
                         
@@ -409,6 +407,7 @@
                         if (!item.code) item.code = '???';
                         if (!item.name) item.name = '未知藥品';
                         
+                        // IMPORTANT: Force shelf to string to prevent crashes
                         item.shelf = String(item.shelf || '');
 
                         if (!item.batches) item.batches = [{ expiry: '', qty: 0 }];
@@ -431,7 +430,7 @@
             const staffCount = computed(() => staffList.value.length);
             const zoneList = computed(() => [...new Set(inventory.value.map(i => i.zone))].sort());
             
-            // --- v5.21 Grouping Fix: Merge single letters (H, I, L...) ---
+            // --- v5.22 GROUPING LOGIC (Unique & Merge Fix) ---
             const getGroup = (shelf) => {
                 if (!shelf) return '其他';
                 const s = String(shelf).trim();
@@ -449,14 +448,21 @@
                     return match[1];
                 }
                 
+                // 3. Number Handling (e.g. "1", "10", "2") -> Group "數字區" or keep separate
+                // Current Requirement: Keep separate but sorted numerically?
+                // Let's group them into "數字區" if they are purely digits to avoid clutter
+                if (/^\d+$/.test(s)) return '其他'; // Or '數字區' if you prefer
+
                 return '其他';
             };
 
+            // --- Hybrid Nav Items Logic ---
             const navItems = computed(() => {
                 try {
                     const currentItems = inventory.value.filter(i => i.zone === selZone.value && i.shelf);
-                    const groups = {}; 
+                    const groups = {}; // Map<Group, Set<Shelf>>
                     
+                    // First pass: Group everything
                     currentItems.forEach(i => {
                         const g = getGroup(i.shelf);
                         if (!groups[g]) groups[g] = new Set();
@@ -464,11 +470,17 @@
                     });
 
                     const items = [];
-                    Object.keys(groups).sort().forEach(g => {
+                    const sortedGroups = Object.keys(groups).sort();
+
+                    sortedGroups.forEach(g => {
+                        // Force Array.from to ensure unique shelves
                         const shelves = Array.from(groups[g]);
+                        
                         if (shelves.length === 1) {
+                            // Singleton: Direct Link
                             items.push({ label: shelves[0], value: shelves[0], type: 'shelf' });
                         } else {
+                            // Multiple: Group Link
                             items.push({ label: g, value: g, type: 'group' });
                         }
                     });
@@ -503,7 +515,8 @@
                         shelves.add(i.shelf);
                     }
                 });
-                // Sort numerically if possible (A1, A2, A10 instead of A1, A10, A2)
+                
+                // Enhanced Sorting: Numeric Aware (A1, A2, A10)
                 return Array.from(shelves).sort((a, b) => {
                     return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
                 });
