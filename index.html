@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.19 (防崩潰修復版)</title>
+    <title>藥局盤點系統 v5.20 (邏輯重構穩定版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/shim.min.js"></script>
@@ -27,7 +27,6 @@
         .dot-red { background: #ef4444; }
         .custom-scroll { -webkit-overflow-scrolling: touch; }
         
-        /* 隱藏捲軸但保留捲動功能 */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
@@ -48,7 +47,7 @@
         
         <div class="bg-red-50 p-4 rounded-lg border border-red-200 mb-6">
             <h3 class="font-bold text-xl text-red-800 mb-2">⚠️ 危險區域</h3>
-            <div class="text-sm text-red-600 mb-2">若單位顯示不正確，請先清空資料後重新匯入</div>
+            <div class="text-sm text-red-600 mb-2">若發生白畫面或資料錯誤，請務必先清空資料</div>
             <button @click="resetDatabase" class="w-full bg-red-600 text-white font-bold text-lg py-4 rounded-xl shadow hover:bg-red-700 btn-act">🔥 清空所有雲端資料</button>
         </div>
 
@@ -61,7 +60,6 @@
 
         <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6">
             <h3 class="font-bold text-lg text-gray-700 mb-2">2. 更新盤點表</h3>
-            <div class="text-sm text-gray-400 mb-2">支援欄位：代碼, 名稱, 儲位, (量/大包裝), 大包裝單位, (量/小包裝), 小包裝單位</div>
             <input type="file" ref="fileInv" multiple accept=".csv,.xlsx,.xls" class="hidden" @change="uploadInventory">
             <button @click="$refs.fileInv.click()" class="w-full py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 text-lg hover:border-blue-500 hover:text-blue-500 transition btn-act">選擇盤點表 (支援多檔)</button>
             <div v-if="isUploading" class="mt-2 text-center text-blue-600 text-base flex justify-center items-center gap-2"><div class="loader"></div> 處理中...</div>
@@ -96,7 +94,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-4xl font-extrabold text-blue-900 text-center mb-2">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.19</p>
+            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.20</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-4 rounded-xl mb-6 text-center text-base font-bold">連線中斷，請檢查網路</div>
 
@@ -372,7 +370,7 @@
             const selGroup = ref('');
             const selShelf = ref('');
 
-            // Add Modal State
+            // Add Modal
             const showAddModal = ref(false);
             const newItem = ref({ code: '', name: '', lgCap: 0, smCap: 0 });
 
@@ -388,19 +386,17 @@
                     
                     inventory.value = arr.map(item => {
                         if (!item) return null;
-                        if (!item.inputs) item.inputs = { lg: 0, sm: 0, lo: 0 };
-                        if (!item.units) item.units = {};
                         
-                        if (!item.units.lg) item.units.lg = { cap: 0, name: '盒' };
-                        if (!item.units.sm) item.units.sm = { cap: 0, name: '排' };
-                        if (!item.units.lo) item.units.lo = { name: '顆/支' };
+                        // Safety Checks
+                        if (!item.inputs) item.inputs = { lg: 0, sm: 0, lo: 0 };
+                        if (!item.units) item.units = { lg: {cap:0,name:'盒'}, sm: {cap:0,name:'排'}, lo: {name:'支'} };
                         
                         if (item.done === undefined) item.done = false;
                         if (!item.user) item.user = '';
                         if (!item.code) item.code = '???';
                         if (!item.name) item.name = '未知藥品';
                         
-                        // Fix for possible number shelf crash
+                        // IMPORTANT: Force shelf to string to prevent crashes
                         item.shelf = String(item.shelf || '');
 
                         if (!item.batches) item.batches = [{ expiry: '', qty: 0 }];
@@ -423,44 +419,53 @@
             const staffCount = computed(() => staffList.value.length);
             const zoneList = computed(() => [...new Set(inventory.value.map(i => i.zone))].sort());
             
-            // --- Intelligent Grouping Logic (v5.19 Fix) ---
+            // --- v5.20 REWRITTEN GROUPING LOGIC ---
             const getGroup = (shelf) => {
                 if (!shelf) return '其他';
-                const s = String(shelf); // Ensure String for match
+                const s = String(shelf).trim();
                 
-                // 1. Custom Keywords (Force 2 chars)
+                // 1. Check specific keywords (Use first 2 chars)
                 const keywords = ['機器', '外用', '外眼'];
                 for (const k of keywords) {
-                    if (s.startsWith(k)) return k; // e.g. "外用A" -> Group "外用"
+                    if (s.startsWith(k)) return k; 
                 }
                 
-                // 2. Default: Non-digit prefix
+                // 2. Standard Pattern: Extract non-digit prefix (e.g. A1 -> A)
                 const match = s.match(/^([^\d]+)/);
                 if (match) return match[1];
+                
+                // 3. Fallback
                 return '其他';
             };
 
-            // --- Hybrid Nav Items ---
+            // --- Hybrid Nav Items Logic ---
             const navItems = computed(() => {
-                const currentItems = inventory.value.filter(i => i.zone === selZone.value && i.shelf);
-                const groups = {}; 
-                
-                currentItems.forEach(i => {
-                    const g = getGroup(i.shelf);
-                    if (!groups[g]) groups[g] = new Set();
-                    groups[g].add(i.shelf);
-                });
+                try {
+                    const currentItems = inventory.value.filter(i => i.zone === selZone.value && i.shelf);
+                    const groups = {}; // Map<Group, Set<Shelf>>
+                    
+                    currentItems.forEach(i => {
+                        const g = getGroup(i.shelf);
+                        if (!groups[g]) groups[g] = new Set();
+                        groups[g].add(i.shelf);
+                    });
 
-                const items = [];
-                Object.keys(groups).sort().forEach(g => {
-                    const shelves = Array.from(groups[g]);
-                    if (shelves.length === 1) {
-                        items.push({ label: shelves[0], value: shelves[0], type: 'shelf' });
-                    } else {
-                        items.push({ label: g, value: g, type: 'group' });
-                    }
-                });
-                return items;
+                    const items = [];
+                    Object.keys(groups).sort().forEach(g => {
+                        const shelves = Array.from(groups[g]);
+                        if (shelves.length === 1) {
+                            // Singleton: Direct Link
+                            items.push({ label: shelves[0], value: shelves[0], type: 'shelf' });
+                        } else {
+                            // Multiple: Group Link
+                            items.push({ label: g, value: g, type: 'group' });
+                        }
+                    });
+                    return items;
+                } catch(e) {
+                    console.error("Nav Error", e);
+                    return [];
+                }
             });
 
             const handleNavClick = (item) => {
@@ -827,7 +832,7 @@
                 save, setZero, isDone, calcTotal, exportZone, exportTotal,
                 showAddModal, newItem, openAddModal, confirmAdd,
                 expiryZones, addBatch, removeBatch,
-                showOnlyPending, selShelf, selGroup, currentSubShelves, resetFilters, selectGroup, navItems, handleNavClick, isActiveNav
+                showOnlyPending, selShelf, selGroup, currentSubShelves, resetFilters, navItems, handleNavClick, isActiveNav
             };
         }
     }).mount('#app');
