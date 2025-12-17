@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.16 (雙重篩選版)</title>
+    <title>藥局盤點系統 v5.17 (儲位分層導航版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/shim.min.js"></script>
@@ -27,7 +27,7 @@
         .dot-red { background: #ef4444; }
         .custom-scroll { -webkit-overflow-scrolling: touch; }
         
-        /* 隱藏捲軸但保留捲動功能 (Chrome/Safari) */
+        /* 隱藏捲軸但保留捲動功能 */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
@@ -96,7 +96,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-4xl font-extrabold text-blue-900 text-center mb-2">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.16</p>
+            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.17</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-4 rounded-xl mb-6 text-center text-base font-bold">連線中斷，請檢查網路</div>
 
@@ -181,15 +181,24 @@
 
                 <div class="w-px h-6 bg-blue-400 shrink-0"></div>
 
-                <button @click="selShelf=''" 
+                <button @click="resetFilters" 
                         class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-bold border transition-colors btn-act"
-                        :class="selShelf==='' ? 'bg-white text-blue-800 border-white' : 'bg-blue-800/50 text-blue-200 border-blue-500'">
-                    全部儲位
+                        :class="selGroup==='' ? 'bg-white text-blue-800 border-white' : 'bg-blue-800/50 text-blue-200 border-blue-500'">
+                    全部櫃位
                 </button>
                 
-                <button v-for="s in shelfList" :key="s" @click="selShelf=s" 
+                <button v-for="g in shelfGroups" :key="g" @click="selectGroup(g)" 
                         class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-bold border transition-colors btn-act"
-                        :class="selShelf===s ? 'bg-white text-blue-800 border-white' : 'bg-blue-800/50 text-blue-200 border-blue-500'">
+                        :class="selGroup===g ? 'bg-white text-blue-800 border-white' : 'bg-blue-800/50 text-blue-200 border-blue-500'">
+                    {{ g }}
+                </button>
+            </div>
+
+            <div v-if="selGroup" class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 pt-1 border-t border-blue-500/30">
+                <span class="text-xs text-blue-200 font-bold shrink-0">詳細位置:</span>
+                <button v-for="s in currentSubShelves" :key="s" @click="selShelf=s"
+                        class="shrink-0 px-3 py-1 rounded-full text-xs font-bold border transition-colors btn-act"
+                        :class="selShelf===s ? 'bg-green-400 text-green-900 border-green-400' : 'bg-blue-900/50 text-blue-200 border-blue-400'">
                     {{ s }}
                 </button>
             </div>
@@ -357,9 +366,10 @@
             const selZone = ref('');
             const keyword = ref('');
             
-            // New Filter States
+            // Filters
             const showOnlyPending = ref(false);
-            const selShelf = ref('');
+            const selGroup = ref(''); // Level 1: Main Group (e.g. A, 調A)
+            const selShelf = ref(''); // Level 2: Specific Shelf (e.g. A1, 調A2)
 
             // Add Modal State
             const showAddModal = ref(false);
@@ -397,21 +407,57 @@
                 });
             });
 
-            // Watch zone change to reset shelf filter
+            // Watch zone change to reset all filters
             watch(selZone, () => {
+                resetFilters();
+            });
+
+            const resetFilters = () => {
+                selGroup.value = '';
                 selShelf.value = '';
                 showOnlyPending.value = false;
-            });
+                keyword.value = '';
+            };
+
+            const selectGroup = (g) => {
+                selGroup.value = g;
+                selShelf.value = ''; // Reset level 2
+            };
 
             const dbCount = computed(() => inventory.value.length);
             const staffCount = computed(() => staffList.value.length);
             const zoneList = computed(() => [...new Set(inventory.value.map(i => i.zone))].sort());
             
-            // Computed: List of shelves in current zone
-            const shelfList = computed(() => {
+            // Computed: Groups (Level 1)
+            // Logic: Extract Prefix from Shelf Name (e.g., "A1" -> "A", "調A1" -> "調A")
+            const shelfGroups = computed(() => {
+                const items = inventory.value.filter(i => i.zone === selZone.value && i.shelf);
+                const groups = new Set();
+                items.forEach(i => {
+                    // Regex: Match non-digit prefix. e.g. "A1" -> "A", "調A1" -> "調A"
+                    // If no match (e.g. "123"), treat as "其他"
+                    const match = i.shelf.match(/^([^\d]+)/); 
+                    if (match) groups.add(match[1]);
+                    else groups.add('其他');
+                });
+                return Array.from(groups).sort();
+            });
+
+            // Computed: Sub Shelves (Level 2)
+            // Shows only shelves belonging to the selected Group
+            const currentSubShelves = computed(() => {
+                if (!selGroup.value) return [];
                 const items = inventory.value.filter(i => i.zone === selZone.value);
-                // Extract unique shelves, sort them
-                return [...new Set(items.map(i => i.shelf).filter(s => s))].sort();
+                const shelves = new Set();
+                
+                items.forEach(i => {
+                    const match = i.shelf ? i.shelf.match(/^([^\d]+)/) : null;
+                    const group = match ? match[1] : '其他';
+                    if (group === selGroup.value) {
+                        shelves.add(i.shelf);
+                    }
+                });
+                return Array.from(shelves).sort();
             });
 
             const displayList = computed(() => {
@@ -427,9 +473,17 @@
                     );
                 }
 
-                // 2. Shelf Filter
+                // 2. Hierarchy Filter (Group > Shelf)
                 if (selShelf.value) {
+                    // Exact shelf match (Level 2 selected)
                     list = list.filter(i => i.shelf === selShelf.value);
+                } else if (selGroup.value) {
+                    // Group match (Level 1 selected)
+                    list = list.filter(i => {
+                        const match = i.shelf ? i.shelf.match(/^([^\d]+)/) : null;
+                        const group = match ? match[1] : '其他';
+                        return group === selGroup.value;
+                    });
                 }
 
                 // 3. Pending Filter
@@ -752,7 +806,7 @@
                 save, setZero, isDone, calcTotal, exportZone, exportTotal,
                 showAddModal, newItem, openAddModal, confirmAdd,
                 expiryZones, addBatch, removeBatch,
-                showOnlyPending, selShelf, shelfList
+                showOnlyPending, selShelf, selGroup, shelfGroups, currentSubShelves, resetFilters, selectGroup
             };
         }
     }).mount('#app');
