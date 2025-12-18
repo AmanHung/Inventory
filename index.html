@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.23 (即時修正版)</title>
+    <title>藥局盤點系統 v5.24 (異動標記版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/shim.min.js"></script>
@@ -85,11 +85,15 @@
         <div class="space-y-4 mb-6">
             <div v-for="z in zoneStats" :key="z.name" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                 <div class="flex justify-between items-center mb-2">
-                    <div>
-                        <div class="font-bold text-xl text-gray-800">{{ z.name }}</div>
+                    <div class="flex-1">
+                        <div class="font-bold text-xl text-gray-800 flex items-center flex-wrap gap-2">
+                            {{ z.name }}
+                            <span v-if="z.hasManual" class="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200">補單</span>
+                            <span v-if="z.hasModified" class="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200">異動</span>
+                        </div>
                         <div class="text-sm text-gray-500">{{ z.done }}/{{ z.total }} ({{ z.pct }}%)</div>
                     </div>
-                    <button @click="exportZone(z.name)" class="text-sm px-4 py-2 rounded border transition btn-act font-bold" :class="z.pct===100 ? 'bg-green-100 text-green-800 border-green-300' : 'bg-gray-50 text-gray-600'">
+                    <button @click="exportZone(z.name)" class="text-sm px-4 py-2 rounded border transition btn-act font-bold shrink-0 ml-2" :class="z.pct===100 ? 'bg-green-100 text-green-800 border-green-300' : 'bg-gray-50 text-gray-600'">
                         {{ z.pct===100 ? '✅ 完成' : '📥 匯出' }}
                     </button>
                 </div>
@@ -105,7 +109,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-4xl font-extrabold text-blue-900 text-center mb-2">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.23</p>
+            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.24</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-4 rounded-xl mb-6 text-center text-base font-bold">連線中斷，請檢查網路</div>
 
@@ -227,7 +231,11 @@
                 
                 <div class="flex justify-between items-start mb-4">
                     <div class="flex-1 mr-2">
-                        <div class="font-extrabold text-gray-900 text-2xl leading-tight mb-1">{{ item.name }}</div>
+                        <div class="font-extrabold text-gray-900 text-2xl leading-tight mb-1 flex items-center gap-2">
+                            {{ item.name }}
+                            <span v-if="item.isManual" class="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200 font-normal align-middle">補單</span>
+                            <span v-if="item.isModified" class="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200 font-normal align-middle">異動</span>
+                        </div>
                         <div class="text-sm text-gray-600 font-mono mt-1 flex items-center flex-wrap gap-2">
                             {{ item.code }} 
                             <span @click.stop="editField(item, 'shelf')" class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-bold cursor-pointer hover:bg-blue-200 border border-blue-200 editable" title="點擊修改儲位">
@@ -422,6 +430,10 @@
                         if (!item.code) item.code = '???';
                         if (!item.name) item.name = '未知藥品';
                         
+                        // Default flags for v5.24
+                        if (item.isManual === undefined) item.isManual = false;
+                        if (item.isModified === undefined) item.isModified = false;
+                        
                         item.shelf = String(item.shelf || '');
 
                         if (!item.batches) item.batches = [{ expiry: '', qty: 0 }];
@@ -568,11 +580,13 @@
 
             const zoneStats = computed(() => {
                 const stats = {};
-                zoneList.value.forEach(z => stats[z] = { name: z, total: 0, done: 0 });
+                zoneList.value.forEach(z => stats[z] = { name: z, total: 0, done: 0, hasManual: false, hasModified: false });
                 inventory.value.forEach(i => {
                     if (stats[i.zone]) {
                         stats[i.zone].total++;
                         if (isDone(i)) stats[i.zone].done++;
+                        if (i.isManual) stats[i.zone].hasManual = true;
+                        if (i.isModified) stats[i.zone].hasModified = true;
                     }
                 });
                 return Object.values(stats).map(s => ({
@@ -620,10 +634,10 @@
                 }, 500);
             };
 
-            // === 新增功能：即時修改資料 ===
+            // === Modified Logic: Update "isModified" flag on edit ===
             const editField = (item, type) => {
                 const pwd = prompt("⚠️ 修改資料安全檢查\n請輸入管理員密碼：");
-                if (pwd !== '8888') { // 預設密碼 8888，可自行修改
+                if (pwd !== '8888') { 
                     if (pwd !== null) alert("❌ 密碼錯誤，拒絕存取");
                     return;
                 }
@@ -637,7 +651,7 @@
                 if (type === 'shelf') {
                     newValue = prompt("✏️ 請輸入新的儲位：", item.shelf);
                     if (newValue === null) return;
-                    item.shelf = String(newValue); // 本地先更新
+                    item.shelf = String(newValue); 
                     updatePayload = { shelf: String(newValue) };
                 } 
                 else if (type === 'lgCap') {
@@ -645,7 +659,7 @@
                     if (newValue === null) return;
                     const num = parseInt(newValue);
                     if (isNaN(num)) { alert("請輸入數字"); return; }
-                    item.units.lg.cap = num; // 本地先更新
+                    item.units.lg.cap = num; 
                     updatePayload = { "units/lg/cap": num };
                 }
                 else if (type === 'smCap') {
@@ -653,11 +667,15 @@
                     if (newValue === null) return;
                     const num = parseInt(newValue);
                     if (isNaN(num)) { alert("請輸入數字"); return; }
-                    item.units.sm.cap = num; // 本地先更新
+                    item.units.sm.cap = num; 
                     updatePayload = { "units/sm/cap": num };
                 }
 
-                // 寫入 Firebase
+                // Add modification flag
+                item.isModified = true;
+                updatePayload.isModified = true;
+
+                // Write to Firebase
                 isSaving.value = true;
                 update(dbRef(db, `inventory/${idx}`), updatePayload)
                     .then(() => {
@@ -669,7 +687,6 @@
                         alert("❌ 更新失敗：" + e.message);
                     });
             };
-            // =============================
 
             const setZero = (item) => {
                 if (expiryZones.includes(item.zone)) {
@@ -729,7 +746,9 @@
                     done: false,
                     user: selUser.value,
                     time: new Date().toISOString(),
-                    batches: [{ expiry: '', qty: 0 }]
+                    batches: [{ expiry: '', qty: 0 }],
+                    isManual: true, // Mark as manual add
+                    isModified: false
                 };
                 
                 update(dbRef(db, `inventory/${newIdx}`), itemData)
@@ -849,7 +868,9 @@
                                     },
                                     inputs: { lg: 0, sm: 0, lo: 0 },
                                     done: false,
-                                    batches: [{ expiry: '', qty: 0 }] 
+                                    batches: [{ expiry: '', qty: 0 }],
+                                    isManual: false, // Default false for import
+                                    isModified: false
                                 });
                             }
                             resolve(parsed);
@@ -876,11 +897,17 @@
                         qtyStr = isDone(x) ? `${x.inputs.lg}${x.units?.lg?.name} ${x.inputs.sm}${x.units?.sm?.name} ${x.inputs.lo.name}`.trim() : '未盤';
                     }
 
+                    // Add Status Column
+                    let status = [];
+                    if (x.isManual) status.push('補單');
+                    if (x.isModified) status.push('異動');
+
                     return {
                         '代碼': x.code, '名稱': x.name, '儲位': x.shelf,
                         '盤點量': qtyStr,
                         '總量': isDone(x) ? calcTotal(x) : 0, 
                         '效期': expiryStr,
+                        '狀態': status.join(','), // Export status
                         '盤點人': x.user || '',
                         '時間': x.time ? new Date(x.time).toLocaleString() : ''
                     };
@@ -891,7 +918,11 @@
             const exportTotal = () => {
                 const map = {};
                 inventory.value.forEach(x => {
-                    if (!map[x.code]) map[x.code] = { code:x.code, name:x.name, total:0, expiry:'' };
+                    if (!map[x.code]) map[x.code] = { code:x.code, name:x.name, total:0, expiry:'', status:[] };
+                    
+                    if (x.isManual) map[x.code].status.push('補單');
+                    if (x.isModified) map[x.code].status.push('異動');
+
                     if (isDone(x)) {
                         const t = calcTotal(x);
                         map[x.code][x.zone] = t; 
@@ -903,7 +934,14 @@
                         }
                     }
                 });
-                dlExcel(Object.values(map), '全院總表');
+                
+                // Convert status array to string for export
+                const exportData = Object.values(map).map(item => {
+                    item.status = [...new Set(item.status)].join(','); // Remove duplicates
+                    return item;
+                });
+
+                dlExcel(exportData, '全院總表');
             };
 
             const dlExcel = (json, fname) => {
@@ -923,7 +961,7 @@
                 expiryZones, addBatch, removeBatch,
                 showOnlyPending, selShelf, selGroup, currentSubShelves, resetFilters, navItems, handleNavClick, isActiveNav,
                 startDrag, stopDrag, onDrag,
-                editField // 新增的編輯功能
+                editField 
             };
         }
     }).mount('#app');
