@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>藥局盤點系統 v5.22 (分類去重終極版)</title>
+    <title>藥局盤點系統 v5.23 (即時修正版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/shim.min.js"></script>
@@ -41,6 +41,9 @@
         input[type=number] { -moz-appearance: textfield; }
         
         .modal-backdrop { background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(2px); }
+        
+        /* 編輯模式提示 */
+        .editable:hover { opacity: 0.8; transform: scale(1.05); transition: all 0.2s; }
     </style>
 </head>
 <body>
@@ -102,7 +105,7 @@
     <div v-else-if="page === 'home'" class="flex-1 flex flex-col justify-center items-center p-8 bg-blue-50 overflow-y-auto">
         <div class="w-full max-w-sm">
             <h1 class="text-4xl font-extrabold text-blue-900 text-center mb-2">藥局盤點系統</h1>
-            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.22</p>
+            <p class="text-center text-gray-400 text-sm mb-10 tracking-widest">FIREBASE V5.23</p>
 
             <div v-if="!isOnline" class="bg-red-100 text-red-700 p-4 rounded-xl mb-6 text-center text-base font-bold">連線中斷，請檢查網路</div>
 
@@ -227,11 +230,23 @@
                         <div class="font-extrabold text-gray-900 text-2xl leading-tight mb-1">{{ item.name }}</div>
                         <div class="text-sm text-gray-600 font-mono mt-1 flex items-center flex-wrap gap-2">
                             {{ item.code }} 
-                            <span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-bold">{{ item.shelf }}</span>
+                            <span @click.stop="editField(item, 'shelf')" class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-bold cursor-pointer hover:bg-blue-200 border border-blue-200 editable" title="點擊修改儲位">
+                                {{ item.shelf }} <span class="text-blue-400 ml-1">✏️</span>
+                            </span>
                         </div>
                         <div class="mt-3 flex flex-wrap gap-2">
-                            <span v-if="item.units?.lg?.cap > 0" class="text-sm px-2 py-1 bg-blue-100 border border-blue-200 rounded text-blue-800 font-bold">1{{ item.units.lg.name }}={{ item.units.lg.cap }}</span>
-                            <span v-if="item.units?.sm?.cap > 1" class="text-sm px-2 py-1 bg-green-100 border border-green-200 rounded text-green-800 font-bold">1{{ item.units.sm.name }}={{ item.units.sm.cap }}</span>
+                            <span v-if="item.units?.lg?.cap > 0" 
+                                  @click.stop="editField(item, 'lgCap')"
+                                  class="text-sm px-2 py-1 bg-blue-100 border border-blue-200 rounded text-blue-800 font-bold cursor-pointer hover:bg-blue-200 editable" 
+                                  title="點擊修改大包裝量">
+                                1{{ item.units.lg.name }}={{ item.units.lg.cap }} <span class="text-blue-400 text-xs">✏️</span>
+                            </span>
+                            <span v-if="item.units?.sm?.cap > 1" 
+                                  @click.stop="editField(item, 'smCap')"
+                                  class="text-sm px-2 py-1 bg-green-100 border border-green-200 rounded text-green-800 font-bold cursor-pointer hover:bg-green-200 editable" 
+                                  title="點擊修改小包裝量">
+                                1{{ item.units.sm.name }}={{ item.units.sm.cap }} <span class="text-green-600 text-xs">✏️</span>
+                            </span>
                         </div>
                     </div>
                     
@@ -407,7 +422,6 @@
                         if (!item.code) item.code = '???';
                         if (!item.name) item.name = '未知藥品';
                         
-                        // IMPORTANT: Force shelf to string to prevent crashes
                         item.shelf = String(item.shelf || '');
 
                         if (!item.batches) item.batches = [{ expiry: '', qty: 0 }];
@@ -430,39 +444,23 @@
             const staffCount = computed(() => staffList.value.length);
             const zoneList = computed(() => [...new Set(inventory.value.map(i => i.zone))].sort());
             
-            // --- v5.22 GROUPING LOGIC (Unique & Merge Fix) ---
             const getGroup = (shelf) => {
                 if (!shelf) return '其他';
                 const s = String(shelf).trim();
-                
-                // 1. Custom Keywords (Priority)
                 const keywords = ['機器', '外用', '外眼'];
                 for (const k of keywords) {
                     if (s.startsWith(k)) return k; 
                 }
-                
-                // 2. Single Letter Prefix Fix (e.g. H1, H10 -> H)
-                // This regex finds the first letter(s) before any digits.
                 const match = s.match(/^([^\d]+)/);
-                if (match) {
-                    return match[1];
-                }
-                
-                // 3. Number Handling (e.g. "1", "10", "2") -> Group "數字區" or keep separate
-                // Current Requirement: Keep separate but sorted numerically?
-                // Let's group them into "數字區" if they are purely digits to avoid clutter
-                if (/^\d+$/.test(s)) return '其他'; // Or '數字區' if you prefer
-
+                if (match) return match[1];
+                if (/^\d+$/.test(s)) return '其他';
                 return '其他';
             };
 
-            // --- Hybrid Nav Items Logic ---
             const navItems = computed(() => {
                 try {
                     const currentItems = inventory.value.filter(i => i.zone === selZone.value && i.shelf);
-                    const groups = {}; // Map<Group, Set<Shelf>>
-                    
-                    // First pass: Group everything
+                    const groups = {}; 
                     currentItems.forEach(i => {
                         const g = getGroup(i.shelf);
                         if (!groups[g]) groups[g] = new Set();
@@ -473,14 +471,10 @@
                     const sortedGroups = Object.keys(groups).sort();
 
                     sortedGroups.forEach(g => {
-                        // Force Array.from to ensure unique shelves
                         const shelves = Array.from(groups[g]);
-                        
                         if (shelves.length === 1) {
-                            // Singleton: Direct Link
                             items.push({ label: shelves[0], value: shelves[0], type: 'shelf' });
                         } else {
-                            // Multiple: Group Link
                             items.push({ label: g, value: g, type: 'group' });
                         }
                     });
@@ -515,8 +509,6 @@
                         shelves.add(i.shelf);
                     }
                 });
-                
-                // Enhanced Sorting: Numeric Aware (A1, A2, A10)
                 return Array.from(shelves).sort((a, b) => {
                     return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
                 });
@@ -562,7 +554,7 @@
                 const container = document.querySelector(`[ref="${refName}"]`) || e.currentTarget;
                 if(!container) return;
                 const x = e.pageX - container.offsetLeft;
-                const walk = (x - startX.value) * 2; // scroll-fast
+                const walk = (x - startX.value) * 2; 
                 container.scrollLeft = scrollLeft.value - walk;
             };
 
@@ -627,6 +619,57 @@
                     }).then(() => isSaving.value = false).catch(e => console.error(e));
                 }, 500);
             };
+
+            // === 新增功能：即時修改資料 ===
+            const editField = (item, type) => {
+                const pwd = prompt("⚠️ 修改資料安全檢查\n請輸入管理員密碼：");
+                if (pwd !== '8888') { // 預設密碼 8888，可自行修改
+                    if (pwd !== null) alert("❌ 密碼錯誤，拒絕存取");
+                    return;
+                }
+
+                const idx = inventory.value.findIndex(x => x.id === item.id);
+                if (idx === -1) { alert("系統錯誤：找不到原始資料"); return; }
+
+                let newValue;
+                let updatePayload = {};
+
+                if (type === 'shelf') {
+                    newValue = prompt("✏️ 請輸入新的儲位：", item.shelf);
+                    if (newValue === null) return;
+                    item.shelf = String(newValue); // 本地先更新
+                    updatePayload = { shelf: String(newValue) };
+                } 
+                else if (type === 'lgCap') {
+                    newValue = prompt(`✏️ 修改 ${item.units.lg.name} 的容量\n(原: ${item.units.lg.cap})：`, item.units.lg.cap);
+                    if (newValue === null) return;
+                    const num = parseInt(newValue);
+                    if (isNaN(num)) { alert("請輸入數字"); return; }
+                    item.units.lg.cap = num; // 本地先更新
+                    updatePayload = { "units/lg/cap": num };
+                }
+                else if (type === 'smCap') {
+                    newValue = prompt(`✏️ 修改 ${item.units.sm.name} 的容量\n(原: ${item.units.sm.cap})：`, item.units.sm.cap);
+                    if (newValue === null) return;
+                    const num = parseInt(newValue);
+                    if (isNaN(num)) { alert("請輸入數字"); return; }
+                    item.units.sm.cap = num; // 本地先更新
+                    updatePayload = { "units/sm/cap": num };
+                }
+
+                // 寫入 Firebase
+                isSaving.value = true;
+                update(dbRef(db, `inventory/${idx}`), updatePayload)
+                    .then(() => {
+                        isSaving.value = false;
+                        alert("✅ 修改成功！\n盤點總量已自動重新計算。");
+                    })
+                    .catch(e => {
+                        isSaving.value = false;
+                        alert("❌ 更新失敗：" + e.message);
+                    });
+            };
+            // =============================
 
             const setZero = (item) => {
                 if (expiryZones.includes(item.zone)) {
@@ -879,7 +922,8 @@
                 showAddModal, newItem, openAddModal, confirmAdd,
                 expiryZones, addBatch, removeBatch,
                 showOnlyPending, selShelf, selGroup, currentSubShelves, resetFilters, navItems, handleNavClick, isActiveNav,
-                startDrag, stopDrag, onDrag
+                startDrag, stopDrag, onDrag,
+                editField // 新增的編輯功能
             };
         }
     }).mount('#app');
