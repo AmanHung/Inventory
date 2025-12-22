@@ -200,7 +200,7 @@
             <div class="flex items-center gap-2 drag-scroll pb-1" ref="scrollContainer1" @mousedown="startDrag($event, 'scrollContainer1')" @mouseleave="stopDrag" @mouseup="stopDrag" @mousemove="onDrag($event, 'scrollContainer1')">
                 <button @click="showOnlyPending = !showOnlyPending" 
                         class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-bold border transition-colors btn-act select-none"
-                        :class="showOnlyPending ? 'bg-yellow-400 text-yellow-900 border-yellow-500' : 'bg-blue-800/50 text-blue-100 border-blue-500'">
+                        :class="showOnlyPending ? 'bg-yellow-400 text-yellow-900 border-yellow-500' : 'bg-blue-600 text-white border-blue-600'">
                     {{ showOnlyPending ? '⚡ 只看未盤' : '顯示全部' }}
                 </button>
 
@@ -208,13 +208,13 @@
 
                 <button @click="resetFilters" 
                         class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-bold border transition-colors btn-act select-none"
-                        :class="!selGroup && !selShelf ? 'bg-white text-blue-800 border-white' : 'bg-blue-800/50 text-blue-200 border-blue-500'">
+                        :class="!selGroup && !selShelf ? 'bg-white text-blue-800 border-white' : 'bg-blue-600 text-white border-blue-600'">
                     全部
                 </button>
                 
                 <button v-for="item in navItems" :key="item.value" @click="handleNavClick(item)" 
                         class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-bold border transition-colors btn-act flex items-center gap-1 select-none"
-                        :class="isActiveNav(item) ? 'bg-white text-blue-800 border-white' : 'bg-blue-800/50 text-blue-200 border-blue-500'">
+                        :class="isActiveNav(item) ? 'bg-white text-blue-800 border-white' : 'bg-blue-600 text-white border-blue-600'">
                     <span v-if="item.type==='group'">📂</span>
                     {{ item.label }}
                 </button>
@@ -224,7 +224,7 @@
                 <span class="text-xs text-blue-200 font-bold shrink-0 select-none">詳細位置:</span>
                 <button v-for="s in currentSubShelves" :key="s" @click="selShelf=s"
                         class="shrink-0 px-3 py-1 rounded-full text-xs font-bold border transition-colors btn-act select-none"
-                        :class="selShelf===s ? 'bg-green-400 text-green-900 border-green-400' : 'bg-blue-900/50 text-blue-200 border-blue-400'">
+                        :class="selShelf===s ? 'bg-green-400 text-green-900 border-green-400' : 'bg-blue-600 text-white border-blue-600'">
                     {{ s }}
                 </button>
             </div>
@@ -983,3 +983,4 @@
 </script>
 </body>
 </html>
+
