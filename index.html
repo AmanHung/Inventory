@@ -87,6 +87,67 @@
     <div v-else-if="page === 'report'" class="flex-1 p-6 bg-gray-50 overflow-y-auto">
         <div class="max-w-6xl mx-auto w-full">
             <h2 class="text-3xl font-bold text-gray-800 mb-4 flex items-center gap-2">📊 報表中心</h2>
+            <div v-else-if="page === 'report'" class="flex-1 p-6 bg-gray-50 overflow-y-auto">
+        <div class="max-w-6xl mx-auto w-full">
+            <h2 class="text-3xl font-bold text-gray-800 mb-4 flex items-center gap-2">📊 報表中心</h2>
+            
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-6">
+                <h3 class="font-bold text-xl text-gray-800 mb-4 flex items-center gap-2">
+                    🔍 藥品跨區查詢
+                    <span class="text-sm text-gray-400 font-normal ml-2">(輸入代碼或名稱，查看各區分佈)</span>
+                </h3>
+                <div class="relative mb-4">
+                    <input v-model="reportKeyword" type="text" placeholder="例如：Panadol 或 ACT..." class="w-full pl-10 pr-4 py-3 rounded-lg border-2 border-gray-200 focus:border-blue-500 outline-none transition text-lg">
+                    <div class="absolute left-3 top-4 text-gray-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    </div>
+                </div>
+                
+                <div v-if="reportSearchResults.length > 0" class="overflow-x-auto border rounded-lg border-gray-200">
+                    <table class="w-full text-sm text-left text-gray-600">
+                        <thead class="bg-gray-50 text-gray-700 font-bold uppercase text-xs">
+                            <tr>
+                                <th class="px-4 py-3">區域/儲位</th>
+                                <th class="px-4 py-3">藥品資訊</th>
+                                <th class="px-4 py-3">盤點明細</th>
+                                <th class="px-4 py-3 text-right">總量</th>
+                                <th class="px-4 py-3 text-right">人員</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            <tr v-for="res in reportSearchResults" :key="res.id" class="hover:bg-blue-50 transition-colors">
+                                <td class="px-4 py-3">
+                                    <div class="font-bold text-blue-800">{{ res.zone }}</div>
+                                    <div class="text-xs text-gray-400 font-mono mt-0.5">{{ res.shelf }}</div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="font-bold text-gray-900 text-base">{{ res.name }}</div>
+                                    <div class="text-xs text-gray-500 font-mono">{{ res.code }}</div>
+                                    <div class="mt-1">
+                                        <span v-if="res.isManual" class="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200">補單</span>
+                                        <span v-if="res.isModified" class="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200">異動</span>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3 font-mono text-gray-800">
+                                    {{ getQtyDisplay(res) }}
+                                </td>
+                                <td class="px-4 py-3 text-right">
+                                    <span v-if="isDone(res)" class="text-lg font-bold text-green-600">{{ calcTotal(res) }}</span>
+                                    <span v-else class="text-xs bg-red-100 text-red-600 px-2 py-1 rounded">未盤</span>
+                                </td>
+                                <td class="px-4 py-3 text-right">
+                                    <div v-if="res.user" class="font-bold text-gray-700">{{ res.user }}</div>
+                                    <div v-if="res.time" class="text-[10px] text-gray-400">{{ new Date(res.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }}</div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div v-else-if="reportKeyword" class="text-center text-gray-400 py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                    查無符合「{{ reportKeyword }}」的資料
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                 <div v-for="z in zoneStats" :key="z.name" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition">
@@ -422,6 +483,38 @@
             const selUser = ref('');
             const selZone = ref('');
             const keyword = ref('');
+            const reportKeyword = ref('');
+            // ⭐ 新增：產生盤點明細字串 (供報表顯示用) ⭐
+            const getQtyDisplay = (item) => {
+                if (!isDone(item)) return '-';
+                
+                // 如果是效期區
+                if (expiryZones.includes(item.zone)) {
+                    const valid = item.batches.filter(b => b.qty > 0);
+                    if (valid.length === 0) return '0';
+                    return valid.map(b => `[${b.expiry||'無效期'}]x${b.qty}`).join(', ');
+                } 
+                // 如果是一般區
+                else {
+                    const parts = [];
+                    if (item.inputs.lg > 0) parts.push(`${item.inputs.lg}${item.units.lg.name}`);
+                    if (item.inputs.sm > 0) parts.push(`${item.inputs.sm}${item.units.sm.name}`);
+                    if (item.inputs.lo > 0) parts.push(`${item.inputs.lo}${item.units.lo.name}`);
+                    return parts.length > 0 ? parts.join(' ') : '0';
+                }
+            };
+
+            // ⭐ 新增：報表搜尋結果計算屬性 ⭐
+            const reportSearchResults = computed(() => {
+                if (!reportKeyword.value.trim()) return [];
+                const k = reportKeyword.value.trim().toLowerCase();
+                
+                // 搜尋代碼或名稱符合的項目，並按區域排序
+                return inventory.value.filter(i => 
+                    (i.code && i.code.toLowerCase().includes(k)) || 
+                    (i.name && i.name.toLowerCase().includes(k))
+                ).sort((a, b) => a.zone.localeCompare(b.zone));
+            });
             
             const showOnlyPending = ref(false);
             const selGroup = ref('');
@@ -995,10 +1088,11 @@
                 expiryZones, addBatch, removeBatch,
                 showOnlyPending, selShelf, selGroup, currentSubShelves, resetFilters, navItems, handleNavClick, isActiveNav,
                 startDrag, stopDrag, onDrag,
-                editField, handleFocus, handleBlur // Added handlers
+                editField, handleFocus, handleBlur, reportKeyword, reportSearchResults, getQtyDisplay
             };
         }
     }).mount('#app');
 </script>
 </body>
 </html>
+
