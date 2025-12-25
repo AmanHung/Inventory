@@ -84,10 +84,7 @@
         </div>
     </div>
 
-    <div v-else-if="page === 'report'" class="flex-1 p-6 bg-gray-50 overflow-y-auto">
-        <div class="max-w-6xl mx-auto w-full">
-            <h2 class="text-3xl font-bold text-gray-800 mb-4 flex items-center gap-2">📊 報表中心</h2>
-            <div v-else-if="page === 'report'" class="flex-1 p-6 bg-gray-50 overflow-y-auto">
+<div v-else-if="page === 'report'" class="flex-1 p-6 bg-gray-50 overflow-y-auto">
         <div class="max-w-6xl mx-auto w-full">
             <h2 class="text-3xl font-bold text-gray-800 mb-4 flex items-center gap-2">📊 報表中心</h2>
             
@@ -147,8 +144,7 @@
                     查無符合「{{ reportKeyword }}」的資料
                 </div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-            
+
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                 <div v-for="z in zoneStats" :key="z.name" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition">
                     <div class="flex justify-between items-center mb-2">
@@ -1095,4 +1091,5 @@
 </script>
 </body>
 </html>
+
 
