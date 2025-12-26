@@ -1042,23 +1042,40 @@
             const exportTotal = () => {
                 const map = {};
                 inventory.value.forEach(x => {
+                    // 初始化物件
                     if (!map[x.code]) map[x.code] = { code:x.code, name:x.name, total:0, expiry:'', status:[] };
                     
+                    // 收集狀態
                     if (x.isManual) map[x.code].status.push('補單');
                     if (x.isModified) map[x.code].status.push('異動');
 
                     if (isDone(x)) {
                         const t = calcTotal(x);
-                        map[x.code][x.zone] = t; 
+                        
+                        // ⭐ 修正點 1：數量累加邏輯 ⭐
+                        // 如果該區域已經有數字，就加上去；如果沒有，就設為當前數字
+                        // (原寫法 map[x.code][x.zone] = t 會導致覆蓋)
+                        map[x.code][x.zone] = (map[x.code][x.zone] || 0) + t;
+                        
+                        // 計算全院總量 (原本這行是對的，保持不動)
                         map[x.code].total += t;
                         
+                        // ⭐ 修正點 2：效期字串串接 (避免覆蓋) ⭐
                         if (expiryZones.includes(x.zone)) {
                              const exps = x.batches.filter(b=>b.qty>0 && b.expiry).map(b=>b.expiry).join(',');
-                             if(exps) map[x.code].expiry = exps;
+                             if(exps) {
+                                 // 如果原本已經有效期，就用逗號接在後面
+                                 if (map[x.code].expiry) {
+                                     map[x.code].expiry += `, ${exps}`;
+                                 } else {
+                                     map[x.code].expiry = exps;
+                                 }
+                             }
                         }
                     }
                 });
                 
+                // 整理狀態欄位並匯出
                 const exportData = Object.values(map).map(item => {
                     item.status = [...new Set(item.status)].join(',');
                     return item;
@@ -1091,5 +1108,6 @@
 </script>
 </body>
 </html>
+
 
 
