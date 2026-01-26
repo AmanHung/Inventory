@@ -531,16 +531,16 @@
             const startX = ref(0);
             const scrollLeft = ref(0);
 
-            // --- 修改處 2：onMounted 區塊 ---
             onMounted(() => {
                 onValue(dbRef(db, ".info/connected"), s => isOnline.value = s.val());
                 onValue(dbRef(db, "staff"), s => staffList.value = s.val() || []);
                 
+                // --- 修改開始：優化後的資料同步機制 ---
                 onValue(dbRef(db, "inventory"), s => {
                     const data = s.val();
                     const rawList = data ? (Array.isArray(data) ? data : Object.values(data)) : [];
                     
-                    // 1. 資料清洗
+                    // 1. 先處理資料清洗 (與原本邏輯相同)
                     const cleanList = rawList.map(item => {
                         if (!item) return null;
                         if (!item.inputs) item.inputs = { lg: 0, sm: 0, lo: 0 };
@@ -556,35 +556,38 @@
                         return item;
                     }).filter(x => x !== null);
 
-                    // 2. 智慧原地更新 (加入免疫期邏輯)
+                    // 2. 智慧同步：不直接替換 inventory.value，而是原地更新
                     const newMap = new Map(cleanList.map(i => [i.id, i]));
                     
+                    // (A) 更新或移除現有項目
                     for (let i = inventory.value.length - 1; i >= 0; i--) {
                         const localItem = inventory.value[i];
                         const remoteItem = newMap.get(localItem.id);
 
                         if (!remoteItem) {
+                            // 如果雲端已經沒這筆資料，則刪除本地
                             inventory.value.splice(i, 1);
                         } else {
-                            // ⭐ 判斷是否為「剛修改過」的資料 (2000毫秒內)
-                            const isRecent = localItem._lastLocalUpdate && (Date.now() - localItem._lastLocalUpdate < 2000);
-                            const isFocused = focusedItemId.value === localItem.id;
-
-                            // 如果正在輸入(Focus) 或 剛剛才輸入完(Recent)，都不要用雲端舊資料覆蓋 inputs
-                            if (isFocused || isRecent) {
+                            // 如果資料存在，使用 Object.assign 原地更新屬性
+                            // 關鍵修正：如果使用者正在編輯此項目 (Focus中)，則"暫時"忽略雲端的 inputs 更新，避免跳動
+                            if (focusedItemId.value === localItem.id) {
+                                // 保留本地的 inputs 狀態，更新其他欄位(如 done, user, time)
                                 const { inputs, ...otherProps } = remoteItem;
                                 Object.assign(localItem, otherProps);
                             } else {
+                                // 無人編輯時，完全同步雲端資料
                                 Object.assign(localItem, remoteItem);
                             }
-                            newMap.delete(localItem.id);
+                            newMap.delete(localItem.id); // 標記已處理
                         }
                     }
 
+                    // (B) 新增雲端有但本地沒有的項目
                     newMap.forEach(newItem => {
                         inventory.value.push(newItem);
                     });
                 });
+                // --- 修改結束 ---
             });
 
             watch(selZone, () => { resetFilters(); });
@@ -764,12 +767,8 @@
             const startInv = () => { if (selUser.value && selZone.value) page.value = 'work'; };
             const enterAdmin = () => { if (prompt("請輸入管理密碼") === "8888") page.value = 'admin'; };
             
-            // --- 修改處 1：save 函式 ---
             let timerMap = {};
             const save = (item) => {
-                // ⭐ 關鍵修正：立即標記此項目為「剛修改」，給予 2 秒免疫期
-                item._lastLocalUpdate = Date.now();
-                
                 isSaving.value = true;
                 item.done = true;
                 item.user = selUser.value;
@@ -1135,8 +1134,6 @@
 </script>
 </body>
 </html>
-
-
 
 
 
