@@ -534,34 +534,60 @@
             onMounted(() => {
                 onValue(dbRef(db, ".info/connected"), s => isOnline.value = s.val());
                 onValue(dbRef(db, "staff"), s => staffList.value = s.val() || []);
+                
+                // --- 修改開始：優化後的資料同步機制 ---
                 onValue(dbRef(db, "inventory"), s => {
                     const data = s.val();
-                    if (!data) { inventory.value = []; return; }
-                    const arr = Array.isArray(data) ? data : Object.values(data);
+                    const rawList = data ? (Array.isArray(data) ? data : Object.values(data)) : [];
                     
-                    inventory.value = arr.map(item => {
+                    // 1. 先處理資料清洗 (與原本邏輯相同)
+                    const cleanList = rawList.map(item => {
                         if (!item) return null;
-                        
-                        // Safety Checks
                         if (!item.inputs) item.inputs = { lg: 0, sm: 0, lo: 0 };
                         if (!item.units) item.units = { lg: {cap:0,name:'盒'}, sm: {cap:0,name:'排'}, lo: {name:'支'} };
-                        
                         if (item.done === undefined) item.done = false;
                         if (!item.user) item.user = '';
                         if (!item.code) item.code = '???';
                         if (!item.name) item.name = '未知藥品';
-                        
-                        // Default flags
                         if (item.isManual === undefined) item.isManual = false;
                         if (item.isModified === undefined) item.isModified = false;
-                        
                         item.shelf = String(item.shelf || '');
-
                         if (!item.batches) item.batches = [{ expiry: '', qty: 0 }];
-
                         return item;
                     }).filter(x => x !== null);
+
+                    // 2. 智慧同步：不直接替換 inventory.value，而是原地更新
+                    const newMap = new Map(cleanList.map(i => [i.id, i]));
+                    
+                    // (A) 更新或移除現有項目
+                    for (let i = inventory.value.length - 1; i >= 0; i--) {
+                        const localItem = inventory.value[i];
+                        const remoteItem = newMap.get(localItem.id);
+
+                        if (!remoteItem) {
+                            // 如果雲端已經沒這筆資料，則刪除本地
+                            inventory.value.splice(i, 1);
+                        } else {
+                            // 如果資料存在，使用 Object.assign 原地更新屬性
+                            // 關鍵修正：如果使用者正在編輯此項目 (Focus中)，則"暫時"忽略雲端的 inputs 更新，避免跳動
+                            if (focusedItemId.value === localItem.id) {
+                                // 保留本地的 inputs 狀態，更新其他欄位(如 done, user, time)
+                                const { inputs, ...otherProps } = remoteItem;
+                                Object.assign(localItem, otherProps);
+                            } else {
+                                // 無人編輯時，完全同步雲端資料
+                                Object.assign(localItem, remoteItem);
+                            }
+                            newMap.delete(localItem.id); // 標記已處理
+                        }
+                    }
+
+                    // (B) 新增雲端有但本地沒有的項目
+                    newMap.forEach(newItem => {
+                        inventory.value.push(newItem);
+                    });
                 });
+                // --- 修改結束 ---
             });
 
             watch(selZone, () => { resetFilters(); });
@@ -1108,6 +1134,7 @@
 </script>
 </body>
 </html>
+
 
 
 
