@@ -524,7 +524,6 @@
             // Focus Tracking to prevent item disappearance
             const focusedItemId = ref(null);
             const handleFocus = (item) => { focusedItemId.value = item.id; };
-            const handleBlur = (item) => { focusedItemId.value = null; };
 
             // Drag Scrolling State
             const isDragging = ref(false);
@@ -535,12 +534,11 @@
                 onValue(dbRef(db, ".info/connected"), s => isOnline.value = s.val());
                 onValue(dbRef(db, "staff"), s => staffList.value = s.val() || []);
                 
-                // --- 修改開始：優化後的資料同步機制 ---
                 onValue(dbRef(db, "inventory"), s => {
                     const data = s.val();
                     const rawList = data ? (Array.isArray(data) ? data : Object.values(data)) : [];
                     
-                    // 1. 先處理資料清洗 (與原本邏輯相同)
+                    // 1. 資料清洗
                     const cleanList = rawList.map(item => {
                         if (!item) return null;
                         if (!item.inputs) item.inputs = { lg: 0, sm: 0, lo: 0 };
@@ -556,38 +554,35 @@
                         return item;
                     }).filter(x => x !== null);
 
-                    // 2. 智慧同步：不直接替換 inventory.value，而是原地更新
+                    // 2. 智慧原地更新 (加入免疫期邏輯)
                     const newMap = new Map(cleanList.map(i => [i.id, i]));
                     
-                    // (A) 更新或移除現有項目
                     for (let i = inventory.value.length - 1; i >= 0; i--) {
                         const localItem = inventory.value[i];
                         const remoteItem = newMap.get(localItem.id);
 
                         if (!remoteItem) {
-                            // 如果雲端已經沒這筆資料，則刪除本地
                             inventory.value.splice(i, 1);
                         } else {
-                            // 如果資料存在，使用 Object.assign 原地更新屬性
-                            // 關鍵修正：如果使用者正在編輯此項目 (Focus中)，則"暫時"忽略雲端的 inputs 更新，避免跳動
-                            if (focusedItemId.value === localItem.id) {
-                                // 保留本地的 inputs 狀態，更新其他欄位(如 done, user, time)
+                            // ⭐ 判斷是否為「剛修改過」的資料 (2000毫秒內)
+                            const isRecent = localItem._lastLocalUpdate && (Date.now() - localItem._lastLocalUpdate < 2000);
+                            const isFocused = focusedItemId.value === localItem.id;
+
+                            // 如果正在輸入(Focus) 或 剛剛才輸入完(Recent)，都不要用雲端舊資料覆蓋 inputs
+                            if (isFocused || isRecent) {
                                 const { inputs, ...otherProps } = remoteItem;
                                 Object.assign(localItem, otherProps);
                             } else {
-                                // 無人編輯時，完全同步雲端資料
                                 Object.assign(localItem, remoteItem);
                             }
-                            newMap.delete(localItem.id); // 標記已處理
+                            newMap.delete(localItem.id);
                         }
                     }
 
-                    // (B) 新增雲端有但本地沒有的項目
                     newMap.forEach(newItem => {
                         inventory.value.push(newItem);
                     });
                 });
-                // --- 修改結束 ---
             });
 
             watch(selZone, () => { resetFilters(); });
@@ -767,8 +762,17 @@
             const startInv = () => { if (selUser.value && selZone.value) page.value = 'work'; };
             const enterAdmin = () => { if (prompt("請輸入管理密碼") === "8888") page.value = 'admin'; };
             
+            // 1. 修改 handleBlur：離開時，立刻掛上「剛修改」的標記，防止瞬間被覆蓋
+            const handleBlur = (item) => { 
+                item._lastLocalUpdate = Date.now(); // ⭐ 關鍵：離開時立刻標記「我剛動過」
+                focusedItemId.value = null; 
+            };
+
+            // 2. 修改 save：確保輸入時也持續更新這個標記
             let timerMap = {};
             const save = (item) => {
+                item._lastLocalUpdate = Date.now(); // ⭐ 雙重保險
+                
                 isSaving.value = true;
                 item.done = true;
                 item.user = selUser.value;
@@ -776,7 +780,7 @@
                 const idx = inventory.value.findIndex(x => x.id === item.id);
                 if (idx === -1) return;
                 clearTimeout(timerMap[item.id]);
-                // Shorten debounce since we use @change now
+                
                 timerMap[item.id] = setTimeout(() => {
                     update(dbRef(db, `inventory/${idx}`), {
                         inputs: item.inputs,
@@ -1134,5 +1138,7 @@
 </script>
 </body>
 </html>
+
+
 
 
