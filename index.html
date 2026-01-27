@@ -1057,7 +1057,17 @@
                     if (x.isModified) status.push('異動');
 
                     return {
-                        '代碼': x.code, '名稱': x.name, '儲位': x.shelf,
+                        // --- 1. 上傳格式區 (完全對應 調A.csv) ---
+                        '代碼': x.code,
+                        '名稱': x.name,
+                        '區': x.zone,  // 補上區域
+                        '儲位': x.shelf,
+                        '(量/大包裝)': x.units?.lg?.cap || 0, // 補上包裝定義
+                        '大包裝單位': x.units?.lg?.name || '盒',
+                        '(量/小包裝)': x.units?.sm?.cap || 0,
+                        '小包裝單位': x.units?.sm?.name || '排',
+                        
+                        // --- 2. 盤點結果區 (下次使用時可刪除) ---
                         '盤點量': qtyStr,
                         '總量': isDone(x) ? calcTotal(x) : 0, 
                         '效期': expiryStr,
@@ -1138,6 +1148,7 @@
 </script>
 </body>
 </html>
+
 
 
 
