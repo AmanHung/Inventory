@@ -345,7 +345,7 @@
                          <label class="block text-gray-600 font-bold mb-2 ml-1 text-sm">📦 批號與效期管理</label>
                          <div v-for="(batch, idx) in item.batches" :key="idx" class="flex gap-2 mb-2 items-center">
                             <div class="flex-1">
-                                <input type="date" v-model="batch.expiry" @change="save(item)" class="w-full h-10 rounded-lg border border-gray-300 text-center text-base shadow-sm">
+                                <input type="date" v-model="batch.expiry" @change="save(item)" @blur="save(item)" class="w-full h-10 rounded-lg border border-gray-300 text-center text-base shadow-sm">
                             </div>
                             <div class="w-20">
                                 <input type="number" v-model.number="batch.qty" 
@@ -480,17 +480,15 @@
             const selZone = ref('');
             const keyword = ref('');
             const reportKeyword = ref('');
-            // ⭐ 新增：產生盤點明細字串 (供報表顯示用) ⭐
+            
             const getQtyDisplay = (item) => {
                 if (!isDone(item)) return '-';
                 
-                // 如果是效期區
                 if (expiryZones.includes(item.zone)) {
                     const valid = item.batches.filter(b => b.qty > 0);
                     if (valid.length === 0) return '0';
                     return valid.map(b => `[${b.expiry||'無效期'}]x${b.qty}`).join(', ');
                 } 
-                // 如果是一般區
                 else {
                     const parts = [];
                     if (item.inputs.lg > 0) parts.push(`${item.inputs.lg}${item.units.lg.name}`);
@@ -500,12 +498,10 @@
                 }
             };
 
-            // ⭐ 新增：報表搜尋結果計算屬性 ⭐
             const reportSearchResults = computed(() => {
                 if (!reportKeyword.value.trim()) return [];
                 const k = reportKeyword.value.trim().toLowerCase();
                 
-                // 搜尋代碼或名稱符合的項目，並按區域排序
                 return inventory.value.filter(i => 
                     (i.code && i.code.toLowerCase().includes(k)) || 
                     (i.name && i.name.toLowerCase().includes(k))
@@ -521,11 +517,9 @@
 
             const expiryZones = ['點滴ER', '點滴OPD'];
 
-            // Focus Tracking to prevent item disappearance
             const focusedItemId = ref(null);
             const handleFocus = (item) => { focusedItemId.value = item.id; };
 
-            // Drag Scrolling State
             const isDragging = ref(false);
             const startX = ref(0);
             const scrollLeft = ref(0);
@@ -538,7 +532,6 @@
                     const data = s.val();
                     const rawList = data ? (Array.isArray(data) ? data : Object.values(data)) : [];
                     
-                    // 1. 資料清洗
                     const cleanList = rawList.map(item => {
                         if (!item) return null;
                         if (!item.inputs) item.inputs = { lg: 0, sm: 0, lo: 0 };
@@ -554,7 +547,6 @@
                         return item;
                     }).filter(x => x !== null);
 
-                    // 2. 智慧原地更新 (加入免疫期邏輯)
                     const newMap = new Map(cleanList.map(i => [i.id, i]));
                     
                     for (let i = inventory.value.length - 1; i >= 0; i--) {
@@ -564,11 +556,9 @@
                         if (!remoteItem) {
                             inventory.value.splice(i, 1);
                         } else {
-                            // ⭐ 判斷是否為「剛修改過」的資料 (2000毫秒內)
                             const isRecent = localItem._lastLocalUpdate && (Date.now() - localItem._lastLocalUpdate < 2000);
                             const isFocused = focusedItemId.value === localItem.id;
 
-                            // 如果正在輸入(Focus) 或 剛剛才輸入完(Recent)，都不要用雲端舊資料覆蓋 inputs
                             if (isFocused || isRecent) {
                                 const { inputs, ...otherProps } = remoteItem;
                                 Object.assign(localItem, otherProps);
@@ -688,14 +678,12 @@
                 }
 
                 if (showOnlyPending.value) {
-                    // Update: Allow the currently focused item to remain visible even if done
                     list = list.filter(i => !isDone(i) || i.id === focusedItemId.value);
                 }
 
                 return list;
             });
 
-            // --- Mouse Drag Scrolling Logic ---
             const startDrag = (e, refName) => {
                 isDragging.value = true;
                 const container = document.querySelector(`[ref="${refName}"]`) || e.currentTarget;
@@ -746,7 +734,6 @@
                 return (item.inputs.lg !== 0 || item.inputs.sm !== 0 || item.inputs.lo !== 0 || item.done);
             };
             
-            // Fix: Force number conversion to prevent string concatenation issues
             const calcTotal = (item) => {
                 if (expiryZones.includes(item.zone)) {
                     return item.batches.reduce((acc, cur) => acc + cur.qty, 0);
@@ -762,32 +749,43 @@
             const startInv = () => { if (selUser.value && selZone.value) page.value = 'work'; };
             const enterAdmin = () => { if (prompt("請輸入管理密碼") === "8888") page.value = 'admin'; };
             
-            // 1. 修改 handleBlur：離開時，立刻掛上「剛修改」的標記，防止瞬間被覆蓋
+            // ⭐ 方案 B 修改點 1：離開焦點時必定呼叫 save
             const handleBlur = (item) => { 
-                item._lastLocalUpdate = Date.now(); // ⭐ 關鍵：離開時立刻標記「我剛動過」
+                item._lastLocalUpdate = Date.now(); 
                 focusedItemId.value = null; 
+                save(item); // 確保手機直接點擊下一格時，也會強制存檔
             };
 
-            // 2. 修改 save：確保輸入時也持續更新這個標記
+            // ⭐ 方案 B 修改點 2：安全尋址與解構防護
             let timerMap = {};
             const save = (item) => {
-                item._lastLocalUpdate = Date.now(); // ⭐ 雙重保險
+                item._lastLocalUpdate = Date.now();
                 
                 isSaving.value = true;
                 item.done = true;
                 item.user = selUser.value;
                 item.time = new Date().toISOString();
-                const idx = inventory.value.findIndex(x => x.id === item.id);
-                if (idx === -1) return;
+                
                 clearTimeout(timerMap[item.id]);
                 
                 timerMap[item.id] = setTimeout(() => {
-                    update(dbRef(db, `inventory/${idx}`), {
-                        inputs: item.inputs,
+                    // ⭐ 在真正準備寫入前，才確認最新的 Firebase 陣列索引
+                    const currentIdx = inventory.value.findIndex(x => x.id === item.id);
+                    if (currentIdx === -1) {
+                        isSaving.value = false;
+                        return;
+                    }
+
+                    // ⭐ 解除 Vue Proxy 綁定，避免 Firebase 寫入失敗 (靜默失敗)
+                    const pureInputs = JSON.parse(JSON.stringify(item.inputs || { lg: 0, sm: 0, lo: 0 }));
+                    const pureBatches = JSON.parse(JSON.stringify(item.batches || [{ expiry: '', qty: 0 }]));
+
+                    update(dbRef(db, `inventory/${currentIdx}`), {
+                        inputs: pureInputs,
                         user: item.user,
                         time: item.time,
                         done: true,
-                        batches: item.batches
+                        batches: pureBatches
                     }).then(() => isSaving.value = false).catch(e => console.error(e));
                 }, 100); 
             };
@@ -1057,17 +1055,14 @@
                     if (x.isModified) status.push('異動');
 
                     return {
-                        // --- 1. 上傳格式區 (完全對應 調A.csv) ---
                         '代碼': x.code,
                         '名稱': x.name,
-                        '區': x.zone,  // 補上區域
+                        '區': x.zone,
                         '儲位': x.shelf,
-                        '(量/大包裝)': x.units?.lg?.cap || 0, // 補上包裝定義
+                        '(量/大包裝)': x.units?.lg?.cap || 0,
                         '大包裝單位': x.units?.lg?.name || '盒',
                         '(量/小包裝)': x.units?.sm?.cap || 0,
                         '小包裝單位': x.units?.sm?.name || '排',
-                        
-                        // --- 2. 盤點結果區 (下次使用時可刪除) ---
                         '盤點量': qtyStr,
                         '總量': isDone(x) ? calcTotal(x) : 0, 
                         '效期': expiryStr,
@@ -1082,29 +1077,19 @@
             const exportTotal = () => {
                 const map = {};
                 inventory.value.forEach(x => {
-                    // 初始化物件
                     if (!map[x.code]) map[x.code] = { code:x.code, name:x.name, total:0, expiry:'', status:[] };
                     
-                    // 收集狀態
                     if (x.isManual) map[x.code].status.push('補單');
                     if (x.isModified) map[x.code].status.push('異動');
 
                     if (isDone(x)) {
                         const t = calcTotal(x);
-                        
-                        // ⭐ 修正點 1：數量累加邏輯 ⭐
-                        // 如果該區域已經有數字，就加上去；如果沒有，就設為當前數字
-                        // (原寫法 map[x.code][x.zone] = t 會導致覆蓋)
                         map[x.code][x.zone] = (map[x.code][x.zone] || 0) + t;
-                        
-                        // 計算全院總量 (原本這行是對的，保持不動)
                         map[x.code].total += t;
                         
-                        // ⭐ 修正點 2：效期字串串接 (避免覆蓋) ⭐
                         if (expiryZones.includes(x.zone)) {
                              const exps = x.batches.filter(b=>b.qty>0 && b.expiry).map(b=>b.expiry).join(',');
                              if(exps) {
-                                 // 如果原本已經有效期，就用逗號接在後面
                                  if (map[x.code].expiry) {
                                      map[x.code].expiry += `, ${exps}`;
                                  } else {
@@ -1115,7 +1100,6 @@
                     }
                 });
                 
-                // 整理狀態欄位並匯出
                 const exportData = Object.values(map).map(item => {
                     item.status = [...new Set(item.status)].join(',');
                     return item;
@@ -1148,8 +1132,3 @@
 </script>
 </body>
 </html>
-
-
-
-
-
