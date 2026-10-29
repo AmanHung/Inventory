@@ -44,6 +44,10 @@
         
         /* 編輯模式提示 */
         .editable:hover { opacity: 0.8; transform: scale(1.05); transition: all 0.2s; }
+        .quantity-keypad { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+        .quantity-key { min-height: 44px; touch-action: manipulation; }
+        .quantity-key:active { background: #dbeafe; }
+        .quantity-editing .work-secondary { display: none; }
     </style>
 </head>
 <body>
@@ -211,7 +215,7 @@
         </div>
     </div>
 
-    <div v-else class="flex-1 flex flex-col h-full overflow-hidden bg-gray-100">
+    <div v-else class="flex-1 flex flex-col h-full overflow-hidden bg-gray-100" :class="{ 'quantity-editing': keypadOpen }">
         <div class="bg-blue-600 p-4 text-white shadow-md z-10 shrink-0 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <div class="flex justify-between items-center md:gap-6">
                 <div>
@@ -229,7 +233,7 @@
                 </div>
             </div>
             
-            <div class="md:flex-1 md:mx-8">
+            <div class="md:flex-1 md:mx-8 work-secondary">
                 <div class="flex justify-between text-xs text-blue-100 mb-1">
                     <span>完成進度</span>
                     <span>{{ currentProgress.done }}/{{ currentProgress.total }} ({{ currentProgress.pct }}%)</span>
@@ -239,7 +243,7 @@
                 </div>
             </div>
             
-            <div class="relative flex gap-2 md:w-auto">
+            <div class="relative flex gap-2 md:w-auto work-secondary">
                 <div class="relative flex-1 md:w-64">
                     <input v-model="keyword" type="text" placeholder="搜尋藥名、代碼..." class="w-full pl-10 pr-10 py-3 rounded-lg text-gray-800 text-base outline-none shadow-inner">
                     <div class="absolute left-3 top-3.5 text-gray-400 pointer-events-none">
@@ -253,7 +257,7 @@
             </div>
         </div>
 
-        <div class="bg-white border-b border-gray-200 px-3 py-2 shadow-sm shrink-0">
+        <div class="bg-white border-b border-gray-200 px-3 py-2 shadow-sm shrink-0 work-secondary">
             <div class="flex items-center gap-2 drag-scroll pb-1" ref="scrollContainer1" @mousedown="startDrag($event, 'scrollContainer1')" @mouseleave="stopDrag" @mouseup="stopDrag" @mousemove="onDrag($event, 'scrollContainer1')">
                 <button @click="showOnlyPending = !showOnlyPending" 
                         class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-bold border transition-colors btn-act select-none"
@@ -287,7 +291,7 @@
             </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto p-3 pb-32 custom-scroll">
+        <div data-inventory-scroll class="flex-1 min-h-0 overflow-y-auto p-3 pb-32 custom-scroll" :style="keypadOpen ? { paddingBottom: (keypadHeight + 24) + 'px' } : {}">
             
             <div v-if="displayList.length === 0" class="flex flex-col items-center justify-center mt-20 text-gray-400">
                 <div class="text-5xl mb-3">📭</div>
@@ -297,7 +301,7 @@
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                <div v-for="item in displayList" :key="item.id" class="bg-white rounded-2xl shadow-sm p-4 border-l-[8px] transition-all duration-300 hover:shadow-md flex flex-col h-full" 
+                <div v-for="item in displayList" :key="item.id" data-inventory-card class="bg-white rounded-2xl shadow-sm p-4 border-l-[8px] transition-all duration-300 hover:shadow-md flex flex-col h-full"
                      :class="isDone(item) ? 'border-green-500 bg-green-50/50' : 'border-red-400'">
                     
                     <div class="flex justify-between items-start mb-4">
@@ -348,10 +352,10 @@
                                 <input type="date" v-model="batch.expiry" @change="save(item)" @blur="save(item)" class="w-full h-10 rounded-lg border border-gray-300 text-center text-base shadow-sm">
                             </div>
                             <div class="w-20">
-                                <input type="number" v-model.number="batch.qty" 
-                                       @change="save(item)" 
-                                       @focus="handleFocus(item)" @blur="handleBlur(item)"
-                                       class="w-full h-10 rounded-lg border border-gray-300 text-center text-lg font-bold shadow-sm" placeholder="數量">
+                                <input type="text" readonly inputmode="none" data-quantity="batch" :data-batch-index="idx" v-model.number="batch.qty"
+                                       @keydown="handleQuantityKey" @click="handleFocus(item, $event)"
+                                       @focus="handleFocus(item, $event)" @blur="handleBlur(item)"
+                                       aria-label="效期數量" class="w-full h-10 rounded-lg border border-gray-300 text-center text-lg font-bold shadow-sm" placeholder="數量">
                             </div>
                             <button @click="removeBatch(item, idx)" class="w-8 h-10 bg-red-100 text-red-500 rounded-lg font-bold border border-red-200">✕</button>
                          </div>
@@ -363,14 +367,14 @@
                              class="p-1 rounded-xl border-2 border-blue-200 bg-blue-50 flex flex-col items-center"
                              @click="$event.currentTarget.querySelector('input').focus()">
                             <label class="text-sm text-blue-900 mb-1 font-bold">{{ item.units.lg.name }}</label>
-                            <input type="number" inputmode="numeric" pattern="[0-9]*" 
+                            <input type="text" readonly inputmode="none" data-quantity="lg"
                                    v-model.number="item.inputs.lg" 
-                                   @change="save(item)" 
-                                   @focus="handleFocus(item)" 
+                                   @keydown="handleQuantityKey" @click="handleFocus(item, $event)"
+                                   @focus="handleFocus(item, $event)"
                                    @blur="handleBlur(item)"
                                    class="w-full h-12 rounded-lg text-center text-2xl font-black outline-none shadow-inner transition-colors p-0 border-4"
-                                   :class="item.inputs.lg !== 0 ? 'bg-blue-100 border-blue-600 text-blue-800' : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'"
-                                   placeholder="0">
+                                   :class="Number(item.inputs.lg) !== 0 ? 'bg-blue-100 border-blue-600 text-blue-800' : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'"
+                                   aria-label="大包裝數量">
                         </div>
                         <div v-else class="flex justify-center items-center opacity-10 text-sm bg-gray-50 rounded-lg">-</div>
 
@@ -378,35 +382,60 @@
                              class="p-1 rounded-xl border-2 border-green-200 bg-green-50 flex flex-col items-center"
                              @click="$event.currentTarget.querySelector('input').focus()">
                             <label class="text-sm text-green-900 mb-1 font-bold">{{ item.units.sm.name }}</label>
-                            <input type="number" inputmode="numeric" pattern="[0-9]*" 
+                            <input type="text" readonly inputmode="none" data-quantity="sm"
                                    v-model.number="item.inputs.sm" 
-                                   @change="save(item)" 
-                                   @focus="handleFocus(item)" 
+                                   @keydown="handleQuantityKey" @click="handleFocus(item, $event)"
+                                   @focus="handleFocus(item, $event)"
                                    @blur="handleBlur(item)"
                                    class="w-full h-12 rounded-lg text-center text-2xl font-black outline-none shadow-inner transition-colors p-0 border-4"
-                                   :class="item.inputs.sm !== 0 ? 'bg-green-100 border-green-600 text-green-800' : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'"
-                                   placeholder="0">
+                                   :class="Number(item.inputs.sm) !== 0 ? 'bg-green-100 border-green-600 text-green-800' : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'"
+                                   aria-label="小包裝數量">
                         </div>
                         <div v-else class="flex justify-center items-center opacity-10 text-sm bg-gray-50 rounded-lg">-</div>
 
                         <div class="p-1 rounded-xl border-2 border-orange-200 bg-orange-50 flex flex-col items-center"
                              @click="$event.currentTarget.querySelector('input').focus()">
                             <label class="text-sm text-orange-900 mb-1 font-bold">{{ item.units.lo?.name || '顆/支' }}</label>
-                            <input type="number" inputmode="numeric" pattern="[0-9]*" 
+                            <input type="text" readonly inputmode="none" data-quantity="lo"
                                    v-model.number="item.inputs.lo" 
-                                   @change="save(item)" 
-                                   @focus="handleFocus(item)" 
+                                   @keydown="handleQuantityKey" @click="handleFocus(item, $event)"
+                                   @focus="handleFocus(item, $event)"
                                    @blur="handleBlur(item)"
                                    class="w-full h-12 rounded-lg text-center text-2xl font-black outline-none shadow-inner transition-colors p-0 border-4"
-                                   :class="item.inputs.lo !== 0 ? 'bg-orange-100 border-orange-600 text-orange-800' : 'bg-white border-gray-300 text-gray-900 focus:border-orange-500'"
-                                   placeholder="0">
+                                   :class="Number(item.inputs.lo) !== 0 ? 'bg-orange-100 border-orange-600 text-orange-800' : 'bg-white border-gray-300 text-gray-900 focus:border-orange-500'"
+                                   aria-label="零散數量">
                         </div>
                     </div>
+
 
                 </div>
             </div>
         </div>
     </div>
+
+    <teleport to="body">
+        <section v-if="keypadOpen && page === 'work'" ref="keypadPanel" aria-label="盤點數字鍵盤" class="quantity-keypad fixed bottom-0 inset-x-0 z-40 bg-slate-100 border-t border-gray-300 shadow-2xl px-3 pt-2" @pointerdown.prevent>
+            <div class="max-w-lg mx-auto">
+                <div class="flex items-center justify-between gap-3 mb-2">
+                    <div class="min-w-0">
+                        <div class="text-sm text-gray-700 truncate">{{ keypadName }}</div>
+                        <div class="text-xs text-gray-500">{{ keypadLabel }} · 自動儲存</div>
+                    </div>
+                    <output aria-live="polite" class="text-3xl font-bold text-blue-800 tabular-nums">{{ keypadValue === '' ? '—' : keypadValue }}</output>
+                </div>
+                <div class="grid grid-cols-3 gap-1.5">
+                    <button v-for="digit in ['1','2','3','4','5','6','7','8','9']" :key="digit" type="button" @click="pressQuantityKey(digit)" class="quantity-key rounded-lg bg-white border border-gray-200 text-2xl font-bold text-gray-800">{{ digit }}</button>
+                    <button type="button" @click="pressQuantityKey('clear')" class="quantity-key rounded-lg bg-gray-200 text-base font-bold text-gray-700">清空</button>
+                    <button type="button" @click="pressQuantityKey('0')" class="quantity-key rounded-lg bg-white border border-gray-200 text-2xl font-bold text-gray-800">0</button>
+                    <button type="button" aria-label="刪除一位" @click="pressQuantityKey('backspace')" class="quantity-key rounded-lg bg-gray-200 text-lg font-bold text-gray-700">⌫ 刪除</button>
+                </div>
+                <div class="grid grid-cols-3 gap-2 mt-2">
+                    <button type="button" @click="nextQuantity" class="h-12 rounded-xl border-2 border-blue-600 bg-white text-blue-700 text-lg font-bold">下一格</button>
+                    <button type="button" @click="finishInput" class="col-span-2 h-12 rounded-xl bg-blue-600 text-white text-xl font-bold">完成輸入</button>
+                </div>
+            </div>
+        </section>
+    </teleport>
 
     <div v-if="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop" @click.self="showAddModal=false">
         <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-bounce-in">
@@ -450,7 +479,7 @@
         return false;
     };
 
-    import { createApp, ref, computed, onMounted, watch } from "https://unpkg.com/vue@3/dist/vue.esm-browser.js";
+    import { createApp, ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "https://unpkg.com/vue@3/dist/vue.esm-browser.js";
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getDatabase, ref as dbRef, set, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
@@ -518,13 +547,50 @@
             const expiryZones = ['點滴ER', '點滴OPD'];
 
             const focusedItemId = ref(null);
-            const handleFocus = (item) => { focusedItemId.value = item.id; };
+            const keypadOpen = ref(false);
+            const keypadPanel = ref(null);
+            const keypadHeight = ref(320);
+            const keypadValue = ref('');
+            const keypadName = ref('');
+            const keypadLabel = ref('');
+            let activeQuantityInput = null;
+            let replaceQuantity = false;
+            let keypadObserver;
+            const positionQuantityInput = () => {
+                if (!keypadOpen.value || !activeQuantityInput || !keypadPanel.value) return;
+                keypadHeight.value = keypadPanel.value.offsetHeight;
+                const scroller = activeQuantityInput.closest('[data-inventory-scroll]');
+                const inputRect = activeQuantityInput.getBoundingClientRect();
+                const top = scroller.getBoundingClientRect().top + 8;
+                const bottom = keypadPanel.value.getBoundingClientRect().top - 12;
+                if (inputRect.bottom > bottom) scroller.scrollTop += inputRect.bottom - bottom;
+                else if (inputRect.top < top) scroller.scrollTop -= top - inputRect.top;
+            };
+            const handleFocus = (item, event) => {
+                const input = event.target;
+                if (activeQuantityInput !== input || !keypadOpen.value) {
+                    keypadValue.value = input.value;
+                    replaceQuantity = true;
+                }
+                activeQuantityInput = input;
+                focusedItemId.value = item.id;
+                keypadName.value = item.name;
+                keypadLabel.value = input.dataset.quantity === 'batch' ? '效期數量' : item.units[input.dataset.quantity].name;
+                keypadOpen.value = true;
+                nextTick(() => {
+                    keypadObserver?.disconnect();
+                    keypadObserver = new ResizeObserver(positionQuantityInput);
+                    keypadObserver.observe(keypadPanel.value);
+                    positionQuantityInput();
+                });
+            };
 
             const isDragging = ref(false);
             const startX = ref(0);
             const scrollLeft = ref(0);
 
             onMounted(() => {
+                window.addEventListener('resize', positionQuantityInput);
                 onValue(dbRef(db, ".info/connected"), s => isOnline.value = s.val());
                 onValue(dbRef(db, "staff"), s => staffList.value = s.val() || []);
                 
@@ -534,7 +600,7 @@
                     
                     const cleanList = rawList.map(item => {
                         if (!item) return null;
-                        if (!item.inputs) item.inputs = { lg: 0, sm: 0, lo: 0 };
+                        if (!item.inputs) item.inputs = { lg: '', sm: '', lo: '' };
                         if (!item.units) item.units = { lg: {cap:0,name:'盒'}, sm: {cap:0,name:'排'}, lo: {name:'支'} };
                         if (item.done === undefined) item.done = false;
                         if (!item.user) item.user = '';
@@ -543,7 +609,14 @@
                         if (item.isManual === undefined) item.isManual = false;
                         if (item.isModified === undefined) item.isModified = false;
                         item.shelf = String(item.shelf || '');
-                        if (!item.batches) item.batches = [{ expiry: '', qty: 0 }];
+                        if (!item.batches) item.batches = [{ expiry: '', qty: '' }];
+                        // Older uncounted rows use zero as the initial value.
+                        if (!item.done) {
+                            Object.keys(item.inputs).forEach(k => {
+                                if (item.inputs[k] === 0) item.inputs[k] = '';
+                            });
+                            item.batches.forEach(b => { if (b.qty === 0) b.qty = ''; });
+                        }
                         return item;
                     }).filter(x => x !== null);
 
@@ -560,7 +633,7 @@
                             const isFocused = focusedItemId.value === localItem.id;
 
                             if (isFocused || isRecent) {
-                                const { inputs, ...otherProps } = remoteItem;
+                                const { inputs, batches, ...otherProps } = remoteItem;
                                 Object.assign(localItem, otherProps);
                             } else {
                                 Object.assign(localItem, remoteItem);
@@ -574,6 +647,12 @@
                     });
                 });
             });
+
+            onBeforeUnmount(() => {
+                window.removeEventListener('resize', positionQuantityInput);
+                keypadObserver?.disconnect();
+            });
+            watch(page, () => { if (page.value !== 'work') finishInput(); });
 
             watch(selZone, () => { resetFilters(); });
 
@@ -726,17 +805,19 @@
                 }));
             });
 
+            const hasEnteredQuantity = (item) => {
+                const values = expiryZones.includes(item.zone)
+                    ? item.batches.map(b => b.qty) : Object.values(item.inputs);
+                return values.some(v => v !== '' && v !== null && v !== undefined && Number.isFinite(Number(v)));
+            };
+
             const isDone = (item) => {
-                if (expiryZones.includes(item.zone)) {
-                    const total = item.batches.reduce((acc, cur) => acc + cur.qty, 0);
-                    return total > 0 || item.done;
-                }
-                return (item.inputs.lg !== 0 || item.inputs.sm !== 0 || item.inputs.lo !== 0 || item.done);
+                return Boolean(item.done) || hasEnteredQuantity(item);
             };
             
             const calcTotal = (item) => {
                 if (expiryZones.includes(item.zone)) {
-                    return item.batches.reduce((acc, cur) => acc + cur.qty, 0);
+                    return item.batches.reduce((acc, cur) => acc + (Number(cur.qty) || 0), 0);
                 }
                 const lg = Number(item.units?.lg?.cap) || 0;
                 const sm = Number(item.units?.sm?.cap) || 0;
@@ -749,11 +830,53 @@
             const startInv = () => { if (selUser.value && selZone.value) page.value = 'work'; };
             const enterAdmin = () => { if (prompt("請輸入管理密碼") === "8888") page.value = 'admin'; };
             
-            // ⭐ 方案 B 修改點 1：離開焦點時必定呼叫 save
-            const handleBlur = (item) => { 
-                item._lastLocalUpdate = Date.now(); 
-                focusedItemId.value = null; 
-                save(item); // 確保手機直接點擊下一格時，也會強制存檔
+            const nextQuantity = () => {
+                if (!activeQuantityInput) return;
+                const card = activeQuantityInput.closest('[data-inventory-card]');
+                const fields = [...card.querySelectorAll('input[data-quantity]')];
+                const index = fields.indexOf(activeQuantityInput);
+                const next = fields[index + 1];
+                if (next) next.focus();
+                else finishInput();
+            };
+            const finishInput = () => {
+                keypadOpen.value = false;
+                keypadObserver?.disconnect();
+                if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur();
+                activeQuantityInput = null;
+                focusedItemId.value = null;
+            };
+            const pressQuantityKey = (key) => {
+                const item = inventory.value.find(i => i.id === focusedItemId.value);
+                if (!item || !activeQuantityInput) return;
+                let value = keypadValue.value;
+                if (key === 'clear') value = '';
+                else if (key === 'backspace') value = value.slice(0, -1);
+                else if (/^\d$/.test(key)) {
+                    value = replaceQuantity ? key : (value + key).replace(/^0+(?=\d)/, '');
+                    if (!Number.isSafeInteger(Number(value))) return;
+                } else return;
+                replaceQuantity = false;
+                keypadValue.value = value;
+                const quantity = value === '' ? '' : Number(value);
+                if (activeQuantityInput.dataset.quantity === 'batch') {
+                    item.batches[Number(activeQuantityInput.dataset.batchIndex)].qty = quantity;
+                } else item.inputs[activeQuantityInput.dataset.quantity] = quantity;
+                save(item);
+            };
+            const handleQuantityKey = (event) => {
+                if (/^\d$/.test(event.key)) { event.preventDefault(); pressQuantityKey(event.key); }
+                else if (event.key === 'Backspace' || event.key === 'Delete') { event.preventDefault(); pressQuantityKey(event.key === 'Delete' ? 'clear' : 'backspace'); }
+                else if (event.key === 'Enter') { event.preventDefault(); nextQuantity(); }
+                else if (event.key === 'Escape') { event.preventDefault(); finishInput(); }
+            };
+            const handleBlur = (item) => {
+                // Input events already save. Merely visiting a blank field must not count it.
+                if (timerMap[item.id]) save(item);
+                if (focusedItemId.value === item.id) {
+                    keypadOpen.value = false;
+                    focusedItemId.value = null;
+                }
             };
 
             // ⭐ 方案 B 修改點 2：安全尋址與解構防護
@@ -762,7 +885,7 @@
                 item._lastLocalUpdate = Date.now();
                 
                 isSaving.value = true;
-                item.done = true;
+                item.done = hasEnteredQuantity(item);
                 item.user = selUser.value;
                 item.time = new Date().toISOString();
                 
@@ -777,14 +900,15 @@
                     }
 
                     // ⭐ 解除 Vue Proxy 綁定，避免 Firebase 寫入失敗 (靜默失敗)
-                    const pureInputs = JSON.parse(JSON.stringify(item.inputs || { lg: 0, sm: 0, lo: 0 }));
-                    const pureBatches = JSON.parse(JSON.stringify(item.batches || [{ expiry: '', qty: 0 }]));
+                    const pureInputs = JSON.parse(JSON.stringify(item.inputs || { lg: '', sm: '', lo: '' }));
+                    const pureBatches = JSON.parse(JSON.stringify(item.batches || [{ expiry: '', qty: '' }]));
+                    delete timerMap[item.id];
 
                     update(dbRef(db, `inventory/${currentIdx}`), {
                         inputs: pureInputs,
                         user: item.user,
                         time: item.time,
-                        done: true,
+                        done: item.done,
                         batches: pureBatches
                     }).then(() => isSaving.value = false).catch(e => console.error(e));
                 }, 100); 
@@ -851,7 +975,7 @@
             };
             
             const addBatch = (item) => {
-                item.batches.push({ expiry: '', qty: 0 });
+                item.batches.push({ expiry: '', qty: '' });
                 save(item); 
             };
 
@@ -895,11 +1019,11 @@
                         sm: { cap: newItem.value.smCap, name: '排' },
                         lo: { name: '顆/支' }
                     },
-                    inputs: { lg: 0, sm: 0, lo: 0 },
+                    inputs: { lg: '', sm: '', lo: '' },
                     done: false,
                     user: selUser.value,
                     time: new Date().toISOString(),
-                    batches: [{ expiry: '', qty: 0 }],
+                    batches: [{ expiry: '', qty: '' }],
                     isManual: true,
                     isModified: false
                 };
@@ -1019,9 +1143,9 @@
                                         sm: { cap: smCap, name: smName },
                                         lo: { name: loName } 
                                     },
-                                    inputs: { lg: 0, sm: 0, lo: 0 },
+                                    inputs: { lg: '', sm: '', lo: '' },
                                     done: false,
-                                    batches: [{ expiry: '', qty: 0 }],
+                                    batches: [{ expiry: '', qty: '' }],
                                     isManual: false,
                                     isModified: false
                                 });
@@ -1125,7 +1249,10 @@
                 expiryZones, addBatch, removeBatch,
                 showOnlyPending, selShelf, selGroup, currentSubShelves, resetFilters, navItems, handleNavClick, isActiveNav,
                 startDrag, stopDrag, onDrag,
-                editField, handleFocus, handleBlur, reportKeyword, reportSearchResults, getQtyDisplay
+                editField, handleFocus, handleBlur, reportKeyword, reportSearchResults, getQtyDisplay,
+                focusedItemId, nextQuantity, finishInput,
+                keypadOpen, keypadPanel, keypadHeight, keypadValue, keypadName, keypadLabel,
+                pressQuantityKey, handleQuantityKey
             };
         }
     }).mount('#app');
